@@ -70,9 +70,10 @@ var _ctx = forge.prng.create(prng_aes);
 
 // add other sources of entropy only if window.crypto.getRandomValues is not
 // available -- otherwise this source will be automatically used by the prng
-var _nodejs = (typeof process !== 'undefined' && process.versions && process.versions.node);
-if(!_nodejs && !(typeof window !== 'undefined' &&
-  window.crypto && window.crypto.getRandomValues)) {
+var _nodejs = (
+  typeof process !== 'undefined' && process.versions && process.versions.node);
+if(forge.disableNativeCode || (!_nodejs && !(typeof window !== 'undefined' &&
+  window.crypto && window.crypto.getRandomValues))) {
 
   // if this is a web worker, do not use weak entropy, instead register to
   // receive strong entropy asynchronously from the main thread
@@ -168,12 +169,11 @@ forge.random.getBytesSync = function(count) {
 
 /* ########## Begin module wrapper ########## */
 var name = 'random';
-var deps = ['./aes', './md', './prng', './util'];
-var nodeDefine = null;
 if(typeof define !== 'function') {
   // NodeJS -> AMD
   if(typeof module === 'object' && module.exports) {
-    nodeDefine = function(ids, factory) {
+    var nodeJS = true;
+    define = function(ids, factory) {
       factory(require, module);
     };
   }
@@ -182,11 +182,11 @@ if(typeof define !== 'function') {
     if(typeof forge === 'undefined') {
       forge = {};
     }
-    initModule(forge);
+    return initModule(forge);
   }
 }
 // AMD
-var defineDeps = ['require', 'module'].concat(deps);
+var deps;
 var defineFunc = function(require, module) {
   module.exports = function(forge) {
     var mods = deps.map(function(dep) {
@@ -205,13 +205,17 @@ var defineFunc = function(require, module) {
     return forge[name];
   };
 };
-if (typeof nodeDefine === 'function') {
-  nodeDefine(defineDeps, defineFunc);
-}
-else if (typeof define === 'function') {
-  define([].concat(defineDeps), function() {
-    defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
-  });
-}
-
+var tmpDefine = define;
+define = function(ids, factory) {
+  deps = (typeof ids === 'string') ? factory.slice(2) : ids.slice(2);
+  if(nodeJS) {
+    delete define;
+    return tmpDefine.apply(null, Array.prototype.slice.call(arguments, 0));
+  }
+  define = tmpDefine;
+  return define.apply(null, Array.prototype.slice.call(arguments, 0));
+};
+define(['require', 'module', './aes', './md', './prng', './util'], function() {
+  defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
+});
 })();

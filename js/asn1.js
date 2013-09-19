@@ -196,7 +196,7 @@ asn1.create = function(tagClass, type, constructed, value) {
     according to the ASN.1 data type. */
 
   // remove undefined values
-  if(value.constructor == Array) {
+  if(forge.util.isArray(value)) {
     var tmp = [];
     for(var i = 0; i < value.length; ++i) {
       if(value[i] !== undefined) {
@@ -210,7 +210,7 @@ asn1.create = function(tagClass, type, constructed, value) {
     tagClass: tagClass,
     type: type,
     constructed: constructed,
-    composed: constructed || (value.constructor == Array),
+    composed: constructed || forge.util.isArray(value),
     value: value
   };
 };
@@ -226,7 +226,7 @@ asn1.create = function(tagClass, type, constructed, value) {
  */
 var _getValueLength = function(b) {
   var b2 = b.getByte();
-  if(b2 == 0x80) {
+  if(b2 === 0x80) {
     return undefined;
   }
 
@@ -260,7 +260,7 @@ asn1.fromDer = function(bytes, strict) {
   }
 
   // wrap in buffer if needed
-  if(bytes.constructor == String) {
+  if(typeof bytes === 'string') {
     bytes = forge.util.createBuffer(bytes);
   }
 
@@ -300,7 +300,7 @@ asn1.fromDer = function(bytes, strict) {
   var value;
 
   // constructed flag is bit 6 (32 = 0x20) of the first byte
-  var constructed = ((b1 & 0x20) == 0x20);
+  var constructed = ((b1 & 0x20) === 0x20);
 
   // determine if the value is composed of other ASN.1 objects (if its
   // constructed it will be and if its a BITSTRING it may be)
@@ -529,7 +529,7 @@ asn1.derToOid = function(bytes) {
   var oid;
 
   // wrap in buffer if needed
-  if(bytes.constructor == String) {
+  if(typeof bytes === 'string') {
     bytes = forge.util.createBuffer(bytes);
   }
 
@@ -687,7 +687,7 @@ asn1.generalizedTimeToDate = function(gentime) {
   var offset = 0;
   var isUTC = false;
 
-  if(gentime.charAt(gentime.length - 1) == 'Z') {
+  if(gentime.charAt(gentime.length - 1) === 'Z') {
     isUTC = true;
   }
 
@@ -710,7 +710,7 @@ asn1.generalizedTimeToDate = function(gentime) {
   }
 
   // check for second fraction
-  if(gentime.charAt(14) == '.') {
+  if(gentime.charAt(14) === '.') {
     fff = parseFloat(gentime.substr(14), 10) * 1000;
   }
 
@@ -797,7 +797,7 @@ asn1.validate = function(obj, v, capture, errors) {
       rval = true;
 
       // handle sub values
-      if(v.value && v.value.constructor == Array) {
+      if(v.value && forge.util.isArray(v.value)) {
         var j = 0;
         for(var i = 0; rval && i < v.value.length; ++i) {
           rval = v.value[i].optional || false;
@@ -1021,12 +1021,11 @@ asn1.prettyPrint = function(obj, level, indentation) {
 
 /* ########## Begin module wrapper ########## */
 var name = 'asn1';
-var deps = ['./util', './oids'];
-var nodeDefine = null;
 if(typeof define !== 'function') {
   // NodeJS -> AMD
   if(typeof module === 'object' && module.exports) {
-    nodeDefine = function(ids, factory) {
+    var nodeJS = true;
+    define = function(ids, factory) {
       factory(require, module);
     };
   }
@@ -1035,11 +1034,11 @@ if(typeof define !== 'function') {
     if(typeof forge === 'undefined') {
       forge = {};
     }
-    initModule(forge);
+    return initModule(forge);
   }
 }
 // AMD
-var defineDeps = ['require', 'module'].concat(deps);
+var deps;
 var defineFunc = function(require, module) {
   module.exports = function(forge) {
     var mods = deps.map(function(dep) {
@@ -1058,13 +1057,17 @@ var defineFunc = function(require, module) {
     return forge[name];
   };
 };
-if (typeof nodeDefine === 'function') {
-  nodeDefine(defineDeps, defineFunc);
-}
-else if (typeof define === 'function') {
-  define([].concat(defineDeps), function() {
-    defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
-  });
-}
-
+var tmpDefine = define;
+define = function(ids, factory) {
+  deps = (typeof ids === 'string') ? factory.slice(2) : ids.slice(2);
+  if(nodeJS) {
+    delete define;
+    return tmpDefine.apply(null, Array.prototype.slice.call(arguments, 0));
+  }
+  define = tmpDefine;
+  return define.apply(null, Array.prototype.slice.call(arguments, 0));
+};
+define(['require', 'module', './util', './oids'], function() {
+  defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
+});
 })();

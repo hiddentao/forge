@@ -1026,6 +1026,266 @@ jQuery(function($)
       }
    })();
 
+   (function()
+   {
+      var keys = [
+         '00000000000000000000000000000000',
+         '2b7e151628aed2a6abf7158809cf4f3c',
+         '2b7e151628aed2a6abf7158809cf4f3c',
+         '2b7e151628aed2a6abf7158809cf4f3c',
+         '2b7e151628aed2a6abf7158809cf4f3c',
+         '00000000000000000000000000000000'
+      ];
+
+      var ivs = [
+         '80000000000000000000000000000000',
+         '000102030405060708090a0b0c0d0e0f',
+         '3B3FD92EB72DAD20333449F8E83CFB4A',
+         'C8A64537A0B3A93FCDE3CDAD9F1CE58B',
+         '26751F67A3CBB140B1808CF187A4F4DF',
+         '60f9ff04fac1a25657bf5b36b5efaf75'
+      ];
+
+      var inputs = [
+         '00000000000000000000000000000000',
+         '6bc1bee22e409f96e93d7e117393172a',
+         'ae2d8a571e03ac9c9eb76fac45af8e51',
+         '30c81c46a35ce411e5fbc1191a0a52ef',
+         'f69f2445df4f9b17ad2b417be66c3710',
+         'This is a 48-byte message (exactly 3 AES blocks)'
+      ];
+
+      var outputs = [
+         '3ad78e726c1ec02b7ebfe92b23d9ec34',
+         '3b3fd92eb72dad20333449f8e83cfb4a',
+         'c8a64537a0b3a93fcde3cdad9f1ce58b',
+         '26751f67a3cbb140b1808cf187a4f4df',
+         'c04b05357c5d1c0eeac4c66f9ff7f2e6',
+         '52396a2ba1ba420c5e5b699a814944d8' +
+           'f4e7fbf984a038319fbc0b4ee45cfa6f' +
+           '07b2564beab5b5e92dbd44cb345f49b4'
+      ];
+
+      for(var i = 0; i < keys.length; ++i)
+      {
+         (function(i)
+         {
+            var key = forge.util.hexToBytes(keys[i]);
+            var iv = forge.util.hexToBytes(ivs[i]);
+            var input = (i !== 5) ?
+               forge.util.hexToBytes(inputs[i]) : inputs[i];
+            var output = forge.util.hexToBytes(outputs[i]);
+
+            addTest('aes-128 cfb encrypt', function(task, test)
+            {
+               // encrypt
+               test.expect.html(outputs[i]);
+               var cipher = forge.aes.createEncryptionCipher(key, 'CFB');
+               cipher.start(iv);
+               cipher.update(forge.util.createBuffer(input));
+               cipher.finish();
+               test.result.html(cipher.output.toHex());
+               test.check();
+            });
+
+            addTest('aes-128 cfb decrypt', function(task, test)
+            {
+               // decrypt
+               test.expect.html(inputs[i]);
+               var cipher = forge.aes.createDecryptionCipher(key, 'CFB');
+               cipher.start(iv);
+               cipher.update(forge.util.createBuffer(output));
+               cipher.finish();
+               var out = (i !== 5) ?
+                 cipher.output.toHex() : cipher.output.getBytes();
+               test.result.html(out);
+               test.check();
+            });
+         })(i);
+      }
+   })();
+
+   (function()
+   {
+      var keys = [
+         '861009ec4d599fab1f40abc76e6f89880cff5833c79c548c99f9045f191cd90b'
+      ];
+
+      var ivs = [
+         'd927ad81199aa7dcadfdb4e47b6dc694'
+      ];
+
+      var inputs = [
+         'MY-DATA-AND-HERE-IS-MORE-DATA'
+      ];
+
+      var outputs = [
+         '80eb666a9fc9e263faf71e87ffc94451d7d8df7cfcf2606470351dd5ac'
+      ];
+
+      for(var i = 0; i < keys.length; ++i)
+      {
+         (function(i)
+         {
+            var key = forge.util.hexToBytes(keys[i]);
+            var iv = forge.util.hexToBytes(ivs[i]);
+            var input = inputs[i];
+            var output = forge.util.hexToBytes(outputs[i]);
+
+            addTest('aes-256 cfb encrypt', function(task, test)
+            {
+               // encrypt
+               test.expect.html(outputs[i]);
+               var cipher = forge.aes.createEncryptionCipher(key, 'CFB');
+               cipher.start(iv);
+               cipher.update(forge.util.createBuffer(input));
+               cipher.finish();
+               test.result.html(cipher.output.toHex());
+               test.check();
+            });
+
+            addTest('aes-256 cfb decrypt', function(task, test)
+            {
+               // decrypt
+               test.expect.html(inputs[i]);
+               var cipher = forge.aes.createDecryptionCipher(key, 'CFB');
+               cipher.start(iv);
+               cipher.update(forge.util.createBuffer(output));
+               cipher.finish();
+               var out = cipher.output.getBytes();
+               test.result.html(out);
+               test.check();
+            });
+         })(i);
+      }
+   })();
+
+   (function()
+   {
+      var keys = [
+         '00000000000000000000000000000000',
+         '00000000000000000000000000000000'
+      ];
+
+      var ivs = [
+         '80000000000000000000000000000000',
+         'c8ca0d6a35dbeac776e911ee16bea7d3'
+      ];
+
+      var inputs = [
+         '00000000000000000000000000000000',
+         'This is a 48-byte message (exactly 3 AES blocks)'
+      ];
+
+      var outputs = [
+         '3ad78e726c1ec02b7ebfe92b23d9ec34',
+         '39c0190727a76b2a90963426f63689cf' +
+           'cdb8a2be8e20c5e877a81a724e3611f6' +
+           '2ecc386f2e941b2441c838906002be19'
+      ];
+
+      for(var i = 0; i < keys.length; ++i)
+      {
+         (function(i)
+         {
+            var key = forge.util.hexToBytes(keys[i]);
+            var iv = forge.util.hexToBytes(ivs[i]);
+            var input = (i !== 1) ?
+               forge.util.hexToBytes(inputs[i]) : inputs[i];
+            var output = forge.util.hexToBytes(outputs[i]);
+
+            addTest('aes-128 ofb encrypt', function(task, test)
+            {
+               // encrypt w/no padding
+               test.expect.html(outputs[i]);
+               var cipher = forge.aes.createEncryptionCipher(key, 'OFB');
+               cipher.start(iv);
+               cipher.update(forge.util.createBuffer(input));
+               cipher.finish(function(){return true;});
+               test.result.html(cipher.output.toHex());
+               test.check();
+            });
+
+            addTest('aes-128 ofb decrypt', function(task, test)
+            {
+               // decrypt w/no padding
+               test.expect.html(inputs[i]);
+               var cipher = forge.aes.createDecryptionCipher(key, 'OFB');
+               cipher.start(iv);
+               cipher.update(forge.util.createBuffer(output));
+               cipher.finish(function(){return true;});
+               var out = (i !== 1) ?
+                 cipher.output.toHex() : cipher.output.getBytes();
+               test.result.html(out);
+               test.check();
+            });
+         })(i);
+      }
+   })();
+
+   (function()
+   {
+      var keys = [
+         '00000000000000000000000000000000',
+         '2b7e151628aed2a6abf7158809cf4f3c'
+      ];
+
+      var ivs = [
+         '650cdb80ff9fc758342d2bd99ee2abcf',
+         'f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff'
+      ];
+
+      var inputs = [
+         'This is a 48-byte message (exactly 3 AES blocks)',
+         '6bc1bee22e409f96e93d7e117393172a'
+      ];
+
+      var outputs = [
+         '5ede11d00e9a76ec1d5e7e811ea3dd1c' +
+           'e09ee941210f825d35718d3282796f1c' +
+           '07c3f1cb424f2b365766ab5229f5b5a4',
+         '874d6191b620e3261bef6864990db6ce'
+      ];
+
+      for(var i = 0; i < keys.length; ++i)
+      {
+         (function(i)
+         {
+            var key = forge.util.hexToBytes(keys[i]);
+            var iv = forge.util.hexToBytes(ivs[i]);
+            var input = (i !== 0) ?
+               forge.util.hexToBytes(inputs[i]) : inputs[i];
+            var output = forge.util.hexToBytes(outputs[i]);
+
+            addTest('aes-128 ctr encrypt', function(task, test)
+            {
+               // encrypt w/no padding
+               test.expect.html(outputs[i]);
+               var cipher = forge.aes.createEncryptionCipher(key, 'CTR');
+               cipher.start(iv);
+               cipher.update(forge.util.createBuffer(input));
+               cipher.finish(function(){return true;});
+               test.result.html(cipher.output.toHex());
+               test.check();
+            });
+
+            addTest('aes-128 ctr decrypt', function(task, test)
+            {
+               // decrypt w/no padding
+               test.expect.html(inputs[i]);
+               var cipher = forge.aes.createDecryptionCipher(key, 'CTR');
+               cipher.start(iv);
+               cipher.update(forge.util.createBuffer(output));
+               cipher.finish(function(){return true;});
+               var out = (i !== 0) ?
+                 cipher.output.toHex() : cipher.output.getBytes();
+               test.result.html(out);
+               test.check();
+            });
+         })(i);
+      }
+   })();
+
    addTest('private key encryption', function(task, test)
    {
       var _privateKey =
@@ -1110,7 +1370,7 @@ jQuery(function($)
       'I83fWK/mZWUjBM33a68KumRiH238v8XyQxj7+C8i6D8G2GXvkigFAehAkb7LZZd+\r\n' +
       'KLuGFyPlWv3fVWHf99KpAkBQFKk3MRMl6IGJZUEFQe4l5whm8LkGU4acSqv9B3xt\r\n' +
       'qROkCrsFrMPqjuuzEmyHoQZ64r2PLJg7FOuyhBnQUOt4\r\n' +
-      '-----END RSA PRIVATE KEY-----';
+      '-----END RSA PRIVATE KEY-----\r\n';
 
       var _publicKey =
       '-----BEGIN PUBLIC KEY-----\r\n' +
@@ -1118,7 +1378,7 @@ jQuery(function($)
       'EJOqdsUMpx9U0YZI7szokJqQNIwokiQ6EonNnWSMlIvy46AhnlRYn+ezeTeU7eMG\r\n' +
       'TkP3VF29vXBo+dLq5e+8VyAyQ3FzM1wI4ts4hRACF8w6mqygXQ7i/SDu8/rXqRGt\r\n' +
       'vnM+z0MYDdKo80efzwIDAQAB\r\n' +
-      '-----END PUBLIC KEY-----';
+      '-----END PUBLIC KEY-----\r\n';
 
       var _certificate =
       '-----BEGIN CERTIFICATE-----\r\n' +
@@ -1139,7 +1399,7 @@ jQuery(function($)
       'BQADgYEARdH2KOlJWTC1CS2y/PAvg4uiM31PXMC1hqSdJlnLM1MY4hRfuf9VyTeX\r\n' +
       'Y6FdybcyDLSxKn9id+g9229ci9/s9PI+QmD5vXd8yZyScLc2JkYB4GC6+9D1+/+x\r\n' +
       's2hzMxuK6kzZlP+0l9LGcraMQPGRydjCARZZm4Uegln9rh85XFQ=\r\n' +
-      '-----END CERTIFICATE-----';
+      '-----END CERTIFICATE-----\r\n';
 
       var _signature =
          '9200ece65cdaed36bcc20b94c65af852e4f88f0b4fe5b249d54665f815992ac4' +
