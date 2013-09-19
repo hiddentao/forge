@@ -1,5 +1,9 @@
 # Forge
 
+[![Build Status][travis-ci-png]][travis-ci-site]
+[travis-ci-png]: https://travis-ci.org/digitalbazaar/forge.png?branch=master
+[travis-ci-site]: https://travis-ci.org/digitalbazaar/forge
+
 A native implementation of [TLS][] (and various other cryptographic tools) in
 [JavaScript][].
 
@@ -50,6 +54,29 @@ network resources.
 * [Logging](#log)
 * [Debugging](#debug)
 * [Flash Socket Policy Module](#fsp)
+
+---------------------------------------
+
+If at any time you wish to disable the use of native code, where available,
+for particular forge features like its secure random number generator, you
+may set the ```disableNativeCode``` flag on ```forge``` to ```true```. It
+is not recommended that you set this flag as native code is typically more
+performant and may have stronger security properties. It may be useful to
+set this flag to test certain features that you plan to run in environments
+that are different from your testing environment.
+
+To disable native code when including forge in the browser:
+
+```js
+forge = {disableNativeCode: true};
+// now include other files
+```
+
+To disable native code when using node.js:
+
+```js
+var forge = require('node-forge')({disableNativeCode: true});
+```
 
 ---------------------------------------
 ## Transports
@@ -199,7 +226,7 @@ var client = forge.tls.createConnection({
     client.prepare('GET / HTTP/1.0\r\n\r\n');
   },
   tlsDataReady: function(connection) {
-    // encrypted data is ready to be sent to the server 
+    // encrypted data is ready to be sent to the server
     var data = connection.tlsData.getBytes();
     socket.write(data, 'binary'); // encoding should be 'binary'
   },
@@ -227,7 +254,7 @@ socket.on('end', function() {
   console.log('[socket] disconnected');
 });
 
-// connect to google.com 
+// connect to google.com
 socket.connect(443, 'google.com');
 
 // or connect to gmail's imap server (but don't send the HTTP header above)
@@ -295,7 +322,7 @@ __Examples__
 <a name="aes" />
 ### AES
 
-Provides basic [AES][] encryption and decryption in CBC mode.
+Provides basic [AES][] encryption and decryption in CBC, CFB, OFB, or CTR mode.
 
 __Examples__
 
@@ -304,8 +331,9 @@ __Examples__
 var key = forge.random.getBytesSync(16);
 var iv = forge.random.getBytesSync(16);
 
-// encrypt some bytes
-var cipher = forge.aes.createEncryptionCipher(key);
+// encrypt some bytes using CBC mode
+// (other modes include: CFB, OFB, and CTR)
+var cipher = forge.aes.createEncryptionCipher(key, 'CBC');
 cipher.start(iv);
 cipher.update(forge.util.createBuffer(someBytes));
 cipher.finish();
@@ -313,8 +341,9 @@ var encrypted = cipher.output;
 // outputs encrypted hex
 console.log(encrypted.toHex());
 
-// decrypt some bytes
-var cipher = forge.aes.createDecryptionCipher(key);
+// decrypt some bytes using CBC mode
+// (other modes include: CFB, OFB, and CTR)
+var cipher = forge.aes.createDecryptionCipher(key, 'CBC');
 cipher.start(iv);
 cipher.update(encrypted);
 cipher.finish();
@@ -323,7 +352,7 @@ console.log(cipher.output.toHex());
 
 // generate a password-based 16-byte key
 var salt = forge.random.getBytesSync(128);
-var derivedKey = forge.pkcs5.pbkdf2('password', salt, numIterations, 16); 
+var derivedKey = forge.pkcs5.pbkdf2('password', salt, numIterations, 16);
 ```
 
 <a name="des" />
@@ -424,19 +453,19 @@ md.update('sign this', 'utf8');
 var signature = privateKey.sign(md);
 
 // verify data with a public key
-var verified = publicKey.verify(md, signature);
+var verified = publicKey.verify(md.digest().bytes(), signature);
 
-// encrypt data with a public key (defaults to RSAES PKCS#1 v1.5) 
+// encrypt data with a public key (defaults to RSAES PKCS#1 v1.5)
 var encrypted = publicKey.encrypt(bytes);
 
 // decrypt data with a private key (defaults to RSAES PKCS#1 v1.5)
 var decrypted = privateKey.decrypt(encrypted);
 
 // encrypt data with a public key using RSAES PKCS#1 v1.5
-var encrypted = publicKey.encrypt(bytes, 'RSAES-PKCS1-v1_5');
+var encrypted = publicKey.encrypt(bytes, 'RSAES-PKCS1-V1_5');
 
 // decrypt data with a private key using RSAES PKCS#1 v1.5
-var decrypted = privateKey.decrypt(encrypted, 'RSAES-PKCS1-v1_5');
+var decrypted = privateKey.decrypt(encrypted, 'RSAES-PKCS1-V1_5');
 
 // encrypt data with a public key using RSAES-OAEP
 var encrypted = publicKey.encrypt(bytes, 'RSA-OAEP');
@@ -471,7 +500,7 @@ var caStore = pki.createCaStore([/* PEM-encoded cert */, ...]);
 // add a certificate to the CA store
 caStore.addCertificate(certObjectOrPemString);
 
-// gets the issuer (its certificate) for the given certificate 
+// gets the issuer (its certificate) for the given certificate
 var issuerCert = caStore.getIssuer(subjectCert);
 
 // verifies a certificate chain against a CA store
@@ -480,12 +509,16 @@ pki.verifyCertificateChain(caStore, chain, customVerifyCallback);
 // signs a certificate using the given private key
 cert.sign(privateKey);
 
+// signs a certificate using SHA-256 instead of SHA-1
+cert.sign(privateKey, forge.md.sha256.create());
+
 // verifies an issued certificate using the certificates public key
 var verified = issuer.verify(issued);
 
 // generate a keypair and create an X.509v3 certificate
 var keys = pki.rsa.generateKeyPair(2048);
 var cert = pki.createCertificate();
+cert.publicKey = keys.publicKey;
 cert.serialNumber = '01';
 cert.validity.notBefore = new Date();
 cert.validity.notAfter = new Date();
@@ -522,13 +555,33 @@ cert.setExtensions([{
   keyEncipherment: true,
   dataEncipherment: true
 }, {
+  name: 'extKeyUsage',
+  serverAuth: true,
+  clientAuth: true,
+  codeSigning: true,
+  emailProtection: true,
+  timeStamping: true
+}, {
+  name: 'nsCertType',
+  client: true,
+  server: true,
+  email: true,
+  objsign: true,
+  sslCA: true,
+  emailCA: true,
+  objCA: true
+}, {
   name: 'subjectAltName',
   altNames: [{
     type: 6, // URI
     value: 'http://example.org/webid#me'
+  }, {
+    type: 7, // IP
+    ip: '127.0.0.1'
   }]
+}, {
+  name: 'subjectKeyIdentifier'
 }]);
-cert.publicKey = keys.publicKey;
 // self-sign certificate
 cert.sign(keys.privateKey);
 
@@ -555,7 +608,7 @@ __Examples__
 ```js
 // generate a password-based 16-byte key
 var salt = forge.random.getBytesSync(128);
-var derivedKey = forge.pkcs5.pbkdf2('password', salt, numIterations, 16); 
+var derivedKey = forge.pkcs5.pbkdf2('password', salt, numIterations, 16);
 ```
 
 <a name="pkcs7" />
@@ -590,6 +643,13 @@ p7.content = forge.util.createBuffer('Hello');
 p7.encrypt();
 
 // convert message to PEM
+var pem = forge.pkcs7.messageToPem(p7);
+
+// create a degenerate PKCS#7 certificate container
+// (CRLs not currently supported, only certificates)
+var p7 = forge.pkcs7.createSignedData();
+p7.addCertificate(certOrCertPem1);
+p7.addCertificate(certOrCertPem2);
 var pem = forge.pkcs7.messageToPem(p7);
 ```
 
@@ -634,6 +694,10 @@ var encryptedPrivateKeyInfo = pki.encryptedPrivateKeyFromPem(pem);
 
 // wraps and encrypts a Forge private key and outputs it in PEM format
 var pem = pki.encryptRsaPrivateKey(privateKey, 'password');
+
+// encrypts a Forge private key and outputs it in PEM format using OpenSSL's
+// proprietary legacy format + encapsulated PEM headers (DEK-Info)
+var pem = pki.encryptRsaPrivateKey(privateKey, 'password', {legacy: true});
 
 // decrypts a PEM-formatted, encrypted private key
 var privateKey = pki.decryptRsaPrivateKey(pem, 'password');
@@ -713,6 +777,15 @@ var p12Asn1 = forge.asn1.fromDer(p12Der);
 // decrypt p12
 var p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, 'password');
 // look at pkcs12.safeContents
+
+// get bags by friendlyName
+var bags = pkcs12.getBags({friendlyName: 'test'});
+
+// get bags by localKeyId
+var bags = pkcs12.getBags({localKeyId: buffer});
+
+// get bags by localKeyId (input in hex)
+var bags = pkcs12.getBags({localKeyIdHex: '7b59377ff142d0be4565e9ac3d396c01401cd879'});
 
 // generate p12, base64 encode
 var p12Asn1 = forge.pkcs12.toPkcs12Asn1(
@@ -1034,7 +1107,7 @@ https://npmjs.org/package/node-forge
 Installation:
 
     npm install node-forge
-    
+
 You can then use forge as a regular module:
 
     var forge = require('node-forge');

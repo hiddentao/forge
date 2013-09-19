@@ -758,7 +758,7 @@ tls.handleHelloRequest = function(c, record, length) {
 tls.parseHelloMessage = function(c, record, length) {
   var msg = null;
 
-  var client = (c.entity == tls.ConnectionEnd.client);
+  var client = (c.entity === tls.ConnectionEnd.client);
 
   // minimum of 38 bytes in message
   if(length < 38) {
@@ -1084,26 +1084,28 @@ tls.handleClientHello = function(c, record, length) {
         data: tls.createCertificate(c)
       }));
 
-      // queue server key exchange
-      tls.queue(c, tls.createRecord({
-        type: tls.ContentType.handshake,
-        data: tls.createServerKeyExchange(c)
-      }));
-
-      // request client certificate if set
-      if(c.verifyClient !== false) {
-        // queue certificate request
+      if(!c.fail) {
+        // queue server key exchange
         tls.queue(c, tls.createRecord({
           type: tls.ContentType.handshake,
-          data: tls.createCertificateRequest(c)
+          data: tls.createServerKeyExchange(c)
+        }));
+
+        // request client certificate if set
+        if(c.verifyClient !== false) {
+          // queue certificate request
+          tls.queue(c, tls.createRecord({
+            type: tls.ContentType.handshake,
+            data: tls.createCertificateRequest(c)
+          }));
+        }
+
+        // queue server hello done
+        tls.queue(c, tls.createRecord({
+          type: tls.ContentType.handshake,
+          data: tls.createServerHelloDone(c)
         }));
       }
-
-      // queue server hello done
-      tls.queue(c, tls.createRecord({
-        type: tls.ContentType.handshake,
-        data: tls.createServerHelloDone(c)
-      }));
     }
 
     // send records
@@ -1324,7 +1326,7 @@ tls.handleClientKeyExchange = function(c, record, length) {
   }
   else {
     var b = record.fragment;
-    msg = {
+    var msg = {
       enc_pre_master_secret: readVector(b, 2).getBytes()
     };
 
@@ -1485,7 +1487,7 @@ tls.handleCertificateVerify = function(c, record, length) {
     var msgBytes = b.bytes();
     b.read += 4;
 
-    msg = {
+    var msg = {
       signature: readVector(b, 2).getBytes()
     };
 
@@ -1589,7 +1591,7 @@ tls.handleServerHelloDone = function(c, record, length) {
       // check for custom alert info
       if(ret || ret === 0) {
         // set custom message and alert description
-        if(ret.constructor == Object) {
+        if(typeof ret === 'object' && !forge.util.isArray(ret)) {
           if(ret.message) {
             error.message = ret.message;
           }
@@ -1597,7 +1599,7 @@ tls.handleServerHelloDone = function(c, record, length) {
             error.alert.description = ret.alert;
           }
         }
-        else if(ret.constructor == Number) {
+        else if(typeof ret === 'number') {
           // set custom alert description
           error.alert.description = ret;
         }
@@ -1687,7 +1689,7 @@ tls.handleServerHelloDone = function(c, record, length) {
  * @param record the record.
  */
 tls.handleChangeCipherSpec = function(c, record) {
-  if(record.fragment.getByte() != 0x01) {
+  if(record.fragment.getByte() !== 0x01) {
     c.error(c, {
       message: 'Invalid ChangeCipherSpec message received.',
       send: true,
@@ -2409,7 +2411,7 @@ tls.createConnectionState = function(c) {
       compressionState: null,
       compressFunction: function(record){return true;},
       updateSequenceNumber: function() {
-        if(mode.sequenceNumber[1] == 0xFFFFFFFF) {
+        if(mode.sequenceNumber[1] === 0xFFFFFFFF) {
           mode.sequenceNumber[1] = 0;
           ++mode.sequenceNumber[0];
         }
@@ -2556,6 +2558,9 @@ tls.createRandom = function() {
  * @return the created record.
  */
 tls.createRecord = function(options) {
+  if(!options.data) {
+    return null;
+  }
   var record = {
     type: options.type,
     version: {
@@ -2820,15 +2825,31 @@ tls.createCertificate = function(c) {
   if(cert !== null) {
     try {
       // normalize cert to a chain of certificates
-      if((Array.isArray && !Array.isArray(cert)) ||
-        cert.constructor !== Array) {
+      if(!forge.util.isArray(cert)) {
         cert = [cert];
       }
       var asn1 = null;
       for(var i = 0; i < cert.length; ++i) {
-        var der = forge.pki.pemToDer(cert[i]);
+        var msg = forge.pem.decode(cert[i])[0];
+        if(msg.type !== 'CERTIFICATE' &&
+          msg.type !== 'X509 CERTIFICATE' &&
+          msg.type !== 'TRUSTED CERTIFICATE') {
+          throw {
+            message: 'Could not convert certificate from PEM; PEM header ' +
+              'type is not "CERTIFICATE", "X509 CERTIFICATE", or ' +
+              '"TRUSTED CERTIFICATE".',
+            headerType: msg.type
+          };
+        }
+        if(msg.procType && msg.procType.type === 'ENCRYPTED') {
+          throw {
+            message: 'Could not convert certificate from PEM; PEM is encrypted.'
+          };
+        }
+
+        var der = forge.util.createBuffer(msg.body);
         if(asn1 === null) {
-          asn1 = forge.asn1.fromDer(der.bytes());
+          asn1 = forge.asn1.fromDer(der.bytes(), false);
         }
 
         // certificate entry is itself a vector with 3 length bytes
@@ -2847,17 +2868,17 @@ tls.createCertificate = function(c) {
       else {
         c.session.serverCertificate = cert;
       }
-   }
-   catch(ex) {
-     c.error(c, {
-       message: 'Could not send certificate list.',
-       cause: ex,
-       send: true,
-       alert: {
-         level: tls.Alert.Level.fatal,
-         description: tls.Alert.Description.bad_certificate
-       }
-     });
+    }
+    catch(ex) {
+      return c.error(c, {
+        message: 'Could not send certificate list.',
+        cause: ex,
+        send: true,
+        alert: {
+          level: tls.Alert.Level.fatal,
+          description: tls.Alert.Description.bad_certificate
+        }
+      });
     }
   }
 
@@ -3248,6 +3269,11 @@ tls.createFinished = function(c) {
  * @param record the record to queue.
  */
 tls.queue = function(c, record) {
+  // error during record creation
+  if(!record) {
+    return;
+  }
+
   // if the record is a handshake record, update handshake hashes
   if(record.type === tls.ContentType.handshake) {
     var bytes = record.fragment.bytes();
@@ -3393,7 +3419,7 @@ tls.verifyCertificateChain = function(c, chain) {
         // call application callback
         var ret = c.verify(c, vfd, depth, chain);
         if(ret !== true) {
-          if(ret.constructor === Object) {
+          if(typeof ret === 'object' && !forge.util.isArray(ret)) {
             // throw custom error
             var error = {
               message: 'The application rejected the certificate.',
@@ -3423,7 +3449,7 @@ tls.verifyCertificateChain = function(c, chain) {
   }
   catch(ex) {
     // build tls error if not already customized
-    if(ex.constructor !== Object) {
+    if(typeof ex !== 'object' || forge.util.isArray(ex)) {
       ex = {
         send: true,
         alert: {
@@ -3540,8 +3566,7 @@ tls.createConnection = function(options) {
   var caStore = null;
   if(options.caStore) {
     // if CA store is an array, convert it to a CA store object
-    if((Array.isArray && Array.isArray(options.caStore)) ||
-      options.caStore.constructor == Array) {
+    if(forge.util.isArray(options.caStore)) {
       caStore = forge.pki.createCaStore(options.caStore);
     }
     else {
@@ -3704,8 +3729,8 @@ tls.createConnection = function(options) {
       };
 
       // check record version
-      if(c.record.version.major != tls.Version.major ||
-        c.record.version.minor != tls.Version.minor) {
+      if(c.record.version.major !== tls.Version.major ||
+        c.record.version.minor !== tls.Version.minor) {
         c.error(c, {
           message: 'Incompatible TLS version.',
           send: true,
@@ -4087,19 +4112,11 @@ forge.tls.createConnection = tls.createConnection;
 
 /* ########## Begin module wrapper ########## */
 var name = 'tls';
-var deps = [
-  './asn1',
-  './hmac',
-  './md',
-  './pki',
-  './random',
-  './util'
-];
-var nodeDefine = null;
 if(typeof define !== 'function') {
   // NodeJS -> AMD
   if(typeof module === 'object' && module.exports) {
-    nodeDefine = function(ids, factory) {
+    var nodeJS = true;
+    define = function(ids, factory) {
       factory(require, module);
     };
   }
@@ -4108,11 +4125,11 @@ if(typeof define !== 'function') {
     if(typeof forge === 'undefined') {
       forge = {};
     }
-    initModule(forge);
+    return initModule(forge);
   }
 }
 // AMD
-var defineDeps = ['require', 'module'].concat(deps);
+var deps;
 var defineFunc = function(require, module) {
   module.exports = function(forge) {
     var mods = deps.map(function(dep) {
@@ -4131,13 +4148,26 @@ var defineFunc = function(require, module) {
     return forge[name];
   };
 };
-if (typeof nodeDefine === 'function') {
-  nodeDefine(defineDeps, defineFunc);
-}
-else if (typeof define === 'function') {
-  define([].concat(defineDeps), function() {
-    defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
-  });
-}
-
+var tmpDefine = define;
+define = function(ids, factory) {
+  deps = (typeof ids === 'string') ? factory.slice(2) : ids.slice(2);
+  if(nodeJS) {
+    delete define;
+    return tmpDefine.apply(null, Array.prototype.slice.call(arguments, 0));
+  }
+  define = tmpDefine;
+  return define.apply(null, Array.prototype.slice.call(arguments, 0));
+};
+define([
+  'require',
+  'module',
+  './asn1',
+  './hmac',
+  './md',
+  './pem',
+  './pki',
+  './random',
+  './util'], function() {
+  defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
+});
 })();

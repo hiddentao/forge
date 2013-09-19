@@ -74,7 +74,7 @@ forge.rc2 = forge.rc2 || {};
  * @return the expanded RC2 key (ByteBuffer of 128 bytes)
  */
 forge.rc2.expandKey = function(key, effKeyBits) {
-  if(key.constructor == String) {
+  if(typeof key === 'string') {
     key = forge.util.createBuffer(key);
   }
   effKeyBits = effKeyBits || 128;
@@ -250,7 +250,7 @@ var createCipher = function(key, bits, encrypt)
     start: function(iv, output) {
       if(iv) {
         /* CBC mode */
-        if(key.constructor == String && iv.length == 8) {
+        if(typeof key === 'string' && iv.length === 8) {
           iv = forge.util.createBuffer(iv);
         }
       }
@@ -302,7 +302,7 @@ var createCipher = function(key, bits, encrypt)
         } else {
           // add PKCS#7 padding to block (each pad byte is the
           // value of the number of pad bytes)
-          var padding = (_input.length() == 8) ? 8 : (8 - _input.length());
+          var padding = (_input.length() === 8) ? 8 : (8 - _input.length());
           _input.fillWithByte(padding, padding);
         }
       }
@@ -420,12 +420,11 @@ forge.rc2.createDecryptionCipher = function(key, bits) {
 
 /* ########## Begin module wrapper ########## */
 var name = 'rc2';
-var deps = ['./util'];
-var nodeDefine = null;
 if(typeof define !== 'function') {
   // NodeJS -> AMD
   if(typeof module === 'object' && module.exports) {
-    nodeDefine = function(ids, factory) {
+    var nodeJS = true;
+    define = function(ids, factory) {
       factory(require, module);
     };
   }
@@ -434,11 +433,11 @@ if(typeof define !== 'function') {
     if(typeof forge === 'undefined') {
       forge = {};
     }
-    initModule(forge);
+    return initModule(forge);
   }
 }
 // AMD
-var defineDeps = ['require', 'module'].concat(deps);
+var deps;
 var defineFunc = function(require, module) {
   module.exports = function(forge) {
     var mods = deps.map(function(dep) {
@@ -457,13 +456,17 @@ var defineFunc = function(require, module) {
     return forge[name];
   };
 };
-if (typeof nodeDefine === 'function') {
-  nodeDefine(defineDeps, defineFunc);
-}
-else if (typeof define === 'function') {
-  define([].concat(defineDeps), function() {
-    defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
-  });
-}
-
+var tmpDefine = define;
+define = function(ids, factory) {
+  deps = (typeof ids === 'string') ? factory.slice(2) : ids.slice(2);
+  if(nodeJS) {
+    delete define;
+    return tmpDefine.apply(null, Array.prototype.slice.call(arguments, 0));
+  }
+  define = tmpDefine;
+  return define.apply(null, Array.prototype.slice.call(arguments, 0));
+};
+define(['require', 'module', './util'], function() {
+  defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
+});
 })();

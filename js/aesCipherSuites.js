@@ -153,11 +153,10 @@ function encrypt_aes_cbc_sha1_padding(blockSize, input, decrypt) {
    padding_length uint8 itself as a padding byte. */
   if(!decrypt) {
     // get the number of padding bytes required to reach the blockSize and
-    // subtract 1 to make room for the padding_length uint8 but add it during
-    // fillWithByte
-    var padding = (input.length() == blockSize) ?
-      (blockSize - 1) : (blockSize - input.length() - 1);
-    input.fillWithByte(padding, padding + 1);
+    // subtract 1 for the padding value (to make room for the padding_length
+    // uint8)
+    var padding = blockSize - (input.length() % blockSize);
+    input.fillWithByte(padding - 1, padding);
   }
   return true;
 }
@@ -258,12 +257,11 @@ function decrypt_aes_cbc_sha1(record, s) {
 
 /* ########## Begin module wrapper ########## */
 var name = 'aesCipherSuites';
-var deps = ['./aes', './tls'];
-var nodeDefine = null;
 if(typeof define !== 'function') {
   // NodeJS -> AMD
   if(typeof module === 'object' && module.exports) {
-    nodeDefine = function(ids, factory) {
+    var nodeJS = true;
+    define = function(ids, factory) {
       factory(require, module);
     };
   }
@@ -272,11 +270,11 @@ if(typeof define !== 'function') {
     if(typeof forge === 'undefined') {
       forge = {};
     }
-    initModule(forge);
+    return initModule(forge);
   }
 }
 // AMD
-var defineDeps = ['require', 'module'].concat(deps);
+var deps;
 var defineFunc = function(require, module) {
   module.exports = function(forge) {
     var mods = deps.map(function(dep) {
@@ -295,13 +293,17 @@ var defineFunc = function(require, module) {
     return forge[name];
   };
 };
-if (typeof nodeDefine === 'function') {
-  nodeDefine(defineDeps, defineFunc);
-}
-else if (typeof define === 'function') {
-  define([].concat(defineDeps), function() {
-    defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
-  });
-}
-
+var tmpDefine = define;
+define = function(ids, factory) {
+  deps = (typeof ids === 'string') ? factory.slice(2) : ids.slice(2);
+  if(nodeJS) {
+    delete define;
+    return tmpDefine.apply(null, Array.prototype.slice.call(arguments, 0));
+  }
+  define = tmpDefine;
+  return define.apply(null, Array.prototype.slice.call(arguments, 0));
+};
+define(['require', 'module', './aes', './tls'], function() {
+  defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
+});
 })();

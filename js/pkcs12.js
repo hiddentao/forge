@@ -265,11 +265,12 @@ var certBagValidator = {
  *
  * The search can optionally be narrowed by a certain bag type.
  *
- * @param safeContents The SafeContents structure to search in.
- * @param attrName The name of the attribute to compare against.
- * @param attrValue The attribute value to search for.
- * @param bagType Optional bag type to narrow search by.
- * @return Array of matching bags
+ * @param safeContents the SafeContents structure to search in.
+ * @param attrName the name of the attribute to compare against.
+ * @param attrValue the attribute value to search for.
+ * @param [bagType] bag type to narrow search by.
+ *
+ * @return an array of matching bags.
  */
 function _getBagsByAttribute(safeContents, attrName, attrValue, bagType) {
   var result = [];
@@ -282,7 +283,7 @@ function _getBagsByAttribute(safeContents, attrName, attrValue, bagType) {
       }
 
       if(bag.attributes[attrName] !== undefined &&
-         bag.attributes[attrName].indexOf(attrValue) >= 0) {
+        bag.attributes[attrName].indexOf(attrValue) >= 0) {
         result.push(bag);
       }
     }
@@ -326,27 +327,69 @@ p12.pkcs12FromAsn1 = function(obj, strict, password) {
     safeContents: [],
 
     /**
-     * Get bags with matching friendlyName attribute
+     * Gets bags with matching attributes.
      *
-     * @param friendlyName The friendly name to search for
-     * @param bagType Optional bag type to narrow search by
-     * @return Array of bags with matching friendlyName attribute
+     * @param filter the attributes to filter by:
+     *          [localKeyId] the localKeyId to search for.
+     *          [localKeyIdHex] the localKeyId in hex to search for.
+     *          [friendlyName] the friendly name to search for.
+     *          [bagType] bag type to narrow each attribute search by.
+     *
+     * @return a map of attribute type to an array of matching bags.
      */
-    getBagsByFriendlyName: function(friendlyName, bagType) {
-      return _getBagsByAttribute(pfx.safeContents, 'friendlyName',
-        friendlyName, bagType);
+    getBags: function(filter) {
+      var rval = {};
+
+      var localKeyId;
+      if('localKeyId' in filter) {
+        localKeyId = filter.localKeyId;
+      }
+      else if('localKeyIdHex' in filter) {
+        localKeyId = forge.util.hexToBytes(filter.localKeyIdHex);
+      }
+
+      if(localKeyId !== undefined) {
+        rval.localKeyId = _getBagsByAttribute(
+          pfx.safeContents, 'localKeyId',
+          localKeyId, filter.bagType);
+      }
+      if('friendlyName' in filter) {
+        rval.friendlyName = _getBagsByAttribute(
+          pfx.safeContents, 'friendlyName',
+          filter.friendlyName, filter.bagType);
+      }
+
+      return rval;
     },
 
     /**
-     * Get bags with matching localKeyId attribute
+     * DEPRECATED: use getBags() instead.
      *
-     * @param localKeyId The localKeyId name to search for
-     * @param bagType Optional bag type to narrow search by
-     * @return Array of bags with matching localKeyId attribute
+     * Get bags with matching friendlyName attribute.
+     *
+     * @param friendlyName the friendly name to search for.
+     * @param [bagType] bag type to narrow search by.
+     *
+     * @return an array of bags with matching friendlyName attribute.
+     */
+    getBagsByFriendlyName: function(friendlyName, bagType) {
+      return _getBagsByAttribute(
+        pfx.safeContents, 'friendlyName', friendlyName, bagType);
+    },
+
+    /**
+     * DEPRECATED: use getBags() instead.
+     *
+     * Get bags with matching localKeyId attribute.
+     *
+     * @param localKeyId the localKeyId to search for.
+     * @param [bagType] bag type to narrow search by.
+     *
+     * @return an array of bags with matching localKeyId attribute.
      */
     getBagsByLocalKeyId: function(localKeyId, bagType) {
-      return _getBagsByAttribute(pfx.safeContents, 'localKeyId',
-        localKeyId, bagType);
+      return _getBagsByAttribute(
+        pfx.safeContents, 'localKeyId', localKeyId, bagType);
     }
   };
 
@@ -530,7 +573,7 @@ function _decryptSafeContents(data, password) {
   var cipher = pki.pbe.getCipher(oid, capture.encParameter, password);
 
   // get encrypted data
-  var encrypted = forge.util.createBuffer(capture.encContent);
+  var encrypted = forge.util.createBuffer(capture.encryptedContent);
 
   cipher.update(encrypted);
   if(!cipher.finish()) {
@@ -658,16 +701,17 @@ function _decodeSafeContents(safeContents, strict, password) {
 }
 
 /**
- * Decode PKCS#12 SET OF PKCS12Attribute into JavaScript object
+ * Decode PKCS#12 SET OF PKCS12Attribute into JavaScript object.
  *
- * @param attributes SET OF PKCS12Attribute (ASN.1 object)
- * @return the decoded attributes
+ * @param attributes SET OF PKCS12Attribute (ASN.1 object).
+ *
+ * @return the decoded attributes.
  */
 function _decodeBagAttributes(attributes) {
   var decodedAttrs = {};
 
   if(attributes !== undefined) {
-    for(var i = 0; i < attributes.length; i ++) {
+    for(var i = 0; i < attributes.length; ++i) {
       var capture = {};
       var errors = [];
       if(!asn1.validate(attributes[i], attributeValidator, capture, errors)) {
@@ -684,7 +728,7 @@ function _decodeBagAttributes(attributes) {
       }
 
       decodedAttrs[pki.oids[oid]] = [];
-      for(var j = 0; j < capture.values.length; j ++) {
+      for(var j = 0; j < capture.values.length; ++j) {
         decodedAttrs[pki.oids[oid]].push(capture.values[j].value);
       }
     }
@@ -710,12 +754,13 @@ function _decodeBagAttributes(attributes) {
  *          to specify a certificate chain).
  * @param password the password to use.
  * @param options:
- *          encAlgorithm the encryption algorithm to use
+ *          algorithm the encryption algorithm to use
  *            ('aes128', 'aes192', 'aes256', '3des'), defaults to 'aes128'.
  *          count the iteration count to use.
  *          saltSize the salt size to use.
  *          useMac true to include a MAC, false not to, defaults to true.
  *          localKeyId the local key ID to use, in hex.
+ *          friendlyName the friendly name to use.
  *          generateLocalKeyId true to generate a random local key ID,
  *            false not to, defaults to true.
  *
@@ -726,7 +771,7 @@ p12.toPkcs12Asn1 = function(key, cert, password, options) {
   options = options || {};
   options.saltSize = options.saltSize || 8;
   options.count = options.count || 2048;
-  options.encAlgorithm = options.encAlgorithm || 'aes128';
+  options.algorithm = options.algorithm || options.encAlgorithm || 'aes128';
   if(!('useMac' in options)) {
     options.useMac = true;
   }
@@ -738,97 +783,70 @@ p12.toPkcs12Asn1 = function(key, cert, password, options) {
   }
 
   var localKeyId = options.localKeyId;
-  var bagAttrs = undefined;
+  var bagAttrs;
   if(localKeyId !== null) {
     localKeyId = forge.util.hexToBytes(localKeyId);
   }
   else if(options.generateLocalKeyId) {
-    // set localKeyId and friendlyName (if specified)
-    localKeyId = forge.random.getBytes(20);
+    // use SHA-1 of paired cert, if available
+    if(cert) {
+      var pairedCert = forge.util.isArray(cert) ? cert[0] : cert;
+      if(typeof pairedCert === 'string') {
+        pairedCert = pki.certificateFromPem(pairedCert);
+      }
+      var sha1 = forge.md.sha1.create();
+      sha1.update(asn1.toDer(pki.certificateToAsn1(pairedCert)).getBytes());
+      localKeyId = sha1.digest().getBytes();
+    }
+    // FIXME: consider using SHA-1 of public key (which can be generated
+    // from private key components), see: cert.generateSubjectKeyIdentifier
+    // generate random bytes
+    else {
+      localKeyId = forge.random.getBytes(20);
+    }
   }
 
+  var attrs = [];
   if(localKeyId !== null) {
-    var attrs = [
+    attrs.push(
       // localKeyID
       asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
         // attrId
         asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
-          asn1.oidToDer(pki.oids['localKeyId']).getBytes()),
+          asn1.oidToDer(pki.oids.localKeyId).getBytes()),
         // attrValues
         asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SET, true, [
           asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OCTETSTRING, false,
             localKeyId)
         ])
-      ])
-    ];
+      ]));
+  }
+  if('friendlyName' in options) {
+    attrs.push(
+      // friendlyName
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+        // attrId
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
+          asn1.oidToDer(pki.oids.friendlyName).getBytes()),
+        // attrValues
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SET, true, [
+          asn1.create(asn1.Class.UNIVERSAL, asn1.Type.BMPSTRING, false,
+            options.friendlyName)
+        ])
+      ]));
+  }
+
+  if(attrs.length > 0) {
     bagAttrs = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SET, true, attrs);
   }
 
   // collect contents for AuthenticatedSafe
   var contents = [];
 
-  // create safe contents for private key
-  var keyBag = null;
-  if(key !== null) {
-    // SafeBag
-    var pkAsn1 = pki.wrapRsaPrivateKey(pki.privateKeyToAsn1(key));
-    if(password === null) {
-      // no encryption
-      keyBag = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
-        // bagId
-        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
-          asn1.oidToDer(pki.oids['keyBag']).getBytes()),
-        // bagValue
-        asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
-          // PrivateKeyInfo
-          pkAsn1
-        ]),
-        // bagAttributes (OPTIONAL)
-        bagAttrs
-      ]);
-    }
-    else {
-      // encrypted PrivateKeyInfo
-      keyBag = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
-        // bagId
-        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
-          asn1.oidToDer(pki.oids['pkcs8ShroudedKeyBag']).getBytes()),
-        // bagValue
-        asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
-          // EncryptedPrivateKeyInfo
-          pki.encryptPrivateKeyInfo(pkAsn1, password, options)
-        ]),
-        // bagAttributes (OPTIONAL)
-        bagAttrs
-      ]);
-    }
-
-    // SafeContents
-    var keySafeContents =
-      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [keyBag]);
-
-    // ContentInfo
-    var keyCI =
-      // PKCS#7 ContentInfo
-      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
-        // contentType
-        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
-          // OID for the content type is 'data'
-          asn1.oidToDer(pki.oids['data']).getBytes()),
-        // content
-        asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
-          asn1.create(
-            asn1.Class.UNIVERSAL, asn1.Type.OCTETSTRING, false,
-            asn1.toDer(keySafeContents).getBytes())
-        ])
-      ]);
-    contents.push(keyCI);
-  }
-
   // create safe bag(s) for certificate chain
   var chain = [];
   if(cert !== null) {
-    if((Array.isArray && Array.isArray(cert)) || cert.constructor === Array) {
+    if(forge.util.isArray(cert)) {
       chain = cert;
     }
     else {
@@ -851,14 +869,14 @@ p12.toPkcs12Asn1 = function(key, cert, password, options) {
       asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
         // bagId
         asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
-          asn1.oidToDer(pki.oids['certBag']).getBytes()),
+          asn1.oidToDer(pki.oids.certBag).getBytes()),
         // bagValue
         asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
           // CertBag
           asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
             // certId
             asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
-              asn1.oidToDer(pki.oids['x509Certificate']).getBytes()),
+              asn1.oidToDer(pki.oids.x509Certificate).getBytes()),
             // certValue (x509Certificate)
             asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
               asn1.create(
@@ -883,7 +901,7 @@ p12.toPkcs12Asn1 = function(key, cert, password, options) {
         // contentType
         asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
           // OID for the content type is 'data'
-          asn1.oidToDer(pki.oids['data']).getBytes()),
+          asn1.oidToDer(pki.oids.data).getBytes()),
         // content
         asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
           asn1.create(
@@ -894,11 +912,69 @@ p12.toPkcs12Asn1 = function(key, cert, password, options) {
     contents.push(certCI);
   }
 
+  // create safe contents for private key
+  var keyBag = null;
+  if(key !== null) {
+    // SafeBag
+    var pkAsn1 = pki.wrapRsaPrivateKey(pki.privateKeyToAsn1(key));
+    if(password === null) {
+      // no encryption
+      keyBag = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+        // bagId
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
+          asn1.oidToDer(pki.oids.keyBag).getBytes()),
+        // bagValue
+        asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
+          // PrivateKeyInfo
+          pkAsn1
+        ]),
+        // bagAttributes (OPTIONAL)
+        bagAttrs
+      ]);
+    }
+    else {
+      // encrypted PrivateKeyInfo
+      keyBag = asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+        // bagId
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
+          asn1.oidToDer(pki.oids.pkcs8ShroudedKeyBag).getBytes()),
+        // bagValue
+        asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
+          // EncryptedPrivateKeyInfo
+          pki.encryptPrivateKeyInfo(pkAsn1, password, options)
+        ]),
+        // bagAttributes (OPTIONAL)
+        bagAttrs
+      ]);
+    }
+
+    // SafeContents
+    var keySafeContents =
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [keyBag]);
+
+    // ContentInfo
+    var keyCI =
+      // PKCS#7 ContentInfo
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+        // contentType
+        asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
+          // OID for the content type is 'data'
+          asn1.oidToDer(pki.oids.data).getBytes()),
+        // content
+        asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
+          asn1.create(
+            asn1.Class.UNIVERSAL, asn1.Type.OCTETSTRING, false,
+            asn1.toDer(keySafeContents).getBytes())
+        ])
+      ]);
+    contents.push(keyCI);
+  }
+
   // create AuthenticatedSafe by stringing together the contents
   var safe = asn1.create(
     asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, contents);
 
-  var macData = undefined;
+  var macData;
   if(options.useMac) {
     // MacData
     var sha1 = forge.md.sha1.create();
@@ -947,7 +1023,7 @@ p12.toPkcs12Asn1 = function(key, cert, password, options) {
       // contentType
       asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
         // OID for the content type is 'data'
-        asn1.oidToDer(pki.oids['data']).getBytes()),
+        asn1.oidToDer(pki.oids.data).getBytes()),
       // content
       asn1.create(asn1.Class.CONTEXT_SPECIFIC, 0, true, [
         asn1.create(
@@ -962,131 +1038,26 @@ p12.toPkcs12Asn1 = function(key, cert, password, options) {
 /**
  * Derives a PKCS#12 key.
  *
- * @param {String} password the password to derive the key material from.
- * @param {ByteBuffer} salt the salt to use.
- * @param {int} id the PKCS#12 ID byte (1 = key material, 2 = IV, 3 = MAC).
- * @param {int} iter the iteration count.
- * @param {int} n the number of bytes to derive from the password.
+ * @param password the password to derive the key material from.
+ * @param salt the salt, as a ByteBuffer, to use.
+ * @param id the PKCS#12 ID byte (1 = key material, 2 = IV, 3 = MAC).
+ * @param iter the iteration count.
+ * @param n the number of bytes to derive from the password.
  * @param md the message digest to use, defaults to SHA-1.
  *
- * @return {ByteBuffer} The bytes derived from the password.
+ * @return a ByteBuffer with the bytes derived from the password.
  */
-p12.generateKey = function(password, salt, id, iter, n, md) {
-  var j, l;
-
-  if(typeof md === 'undefined' || md === null) {
-    md = forge.md.sha1.create();
-  }
-
-  var u = md.digestLength;
-  var v = md.blockLength;
-  var result = new forge.util.ByteBuffer();
-
-  /* Convert password to Unicode byte buffer + trailing 0-byte. */
-  var passBuf = new forge.util.ByteBuffer();
-  for(l = 0; l < password.length; l++) {
-    passBuf.putInt16(password.charCodeAt(l));
-  }
-  passBuf.putInt16(0);
-
-  /* Length of salt and password in BYTES. */
-  var p = passBuf.length();
-  var s = salt.length();
-
-  /* 1. Construct a string, D (the "diversifier"), by concatenating
-        v copies of ID. */
-  var D = new forge.util.ByteBuffer();
-  D.fillWithByte(id, v);
-
-  /* 2. Concatenate copies of the salt together to create a string S of length
-        v * ceil(s / v) bytes (the final copy of the salt may be trunacted
-        to create S).
-        Note that if the salt is the empty string, then so is S. */
-  var Slen = v * Math.ceil(s / v);
-  var S = new forge.util.ByteBuffer();
-  for(l = 0; l < Slen; l ++) {
-    S.putByte(salt.at(l % s));
-  }
-
-  /* 3. Concatenate copies of the password together to create a string P of
-        length v * ceil(p / v) bytes (the final copy of the password may be
-        truncated to create P).
-        Note that if the password is the empty string, then so is P. */
-  var Plen = v * Math.ceil(p / v);
-  var P = new forge.util.ByteBuffer();
-  for(l = 0; l < Plen; l ++) {
-    P.putByte(passBuf.at(l % p));
-  }
-
-  /* 4. Set I=S||P to be the concatenation of S and P. */
-  var I = S;
-  I.putBuffer(P);
-
-  /* 5. Set c=ceil(n / u). */
-  var c = Math.ceil(n / u);
-
-  /* 6. For i=1, 2, ..., c, do the following: */
-  for(var i = 1; i <= c; i ++) {
-    /* a) Set Ai=H^r(D||I). (l.e. the rth hash of D||I, H(H(H(...H(D||I)))) */
-    var buf = new forge.util.ByteBuffer();
-    buf.putBytes(D.bytes());
-    buf.putBytes(I.bytes());
-    for(var round = 0; round < iter; round ++) {
-      md.start();
-      md.update(buf.getBytes());
-      buf = md.digest();
-    }
-
-    /* b) Concatenate copies of Ai to create a string B of length v bytes (the
-          final copy of Ai may be truncated to create B). */
-    var B = new forge.util.ByteBuffer();
-    for(l = 0; l < v; l ++) {
-      B.putByte(buf.at(l % u));
-    }
-
-    /* c) Treating I as a concatenation I0, I1, ..., Ik-1 of v-byte blocks,
-          where k=ceil(s / v) + ceil(p / v), modify I by setting
-          Ij=(Ij+B+1) mod 2v for each j.  */
-    var k = Math.ceil(s / v) + Math.ceil(p / v);
-    var Inew = new forge.util.ByteBuffer();
-    for(j = 0; j < k; j ++) {
-      var chunk = new forge.util.ByteBuffer(I.getBytes(v));
-      var x = 0x1ff;
-      for(l = B.length() - 1; l >= 0; l --) {
-        x = x >> 8;
-        x += B.at(l) + chunk.at(l);
-        chunk.setAt(l, x & 0xff);
-      }
-      Inew.putBuffer(chunk);
-    }
-    I = Inew;
-
-    /* Add Ai to A. */
-    result.putBuffer(buf);
-  }
-
-  result.truncate(result.length() - n);
-  return result;
-};
+p12.generateKey = forge.pbe.generatePkcs12Key;
 
 } // end module implementation
 
 /* ########## Begin module wrapper ########## */
 var name = 'pkcs12';
-var deps = [
-  './asn1',
-  './sha1',
-  './pkcs7asn1',
-  './pki',
-  './util',
-  './random',
-  './hmac'
-];
-var nodeDefine = null;
 if(typeof define !== 'function') {
   // NodeJS -> AMD
   if(typeof module === 'object' && module.exports) {
-    nodeDefine = function(ids, factory) {
+    var nodeJS = true;
+    define = function(ids, factory) {
       factory(require, module);
     };
   }
@@ -1095,11 +1066,11 @@ if(typeof define !== 'function') {
     if(typeof forge === 'undefined') {
       forge = {};
     }
-    initModule(forge);
+    return initModule(forge);
   }
 }
 // AMD
-var defineDeps = ['require', 'module'].concat(deps);
+var deps;
 var defineFunc = function(require, module) {
   module.exports = function(forge) {
     var mods = deps.map(function(dep) {
@@ -1118,13 +1089,30 @@ var defineFunc = function(require, module) {
     return forge[name];
   };
 };
-if (typeof nodeDefine === 'function') {
-  nodeDefine(defineDeps, defineFunc);
-}
-else if (typeof define === 'function') {
-  define([].concat(defineDeps), function() {
-    defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
-  });
-}
-
+var tmpDefine = define;
+define = function(ids, factory) {
+  deps = (typeof ids === 'string') ? factory.slice(2) : ids.slice(2);
+  if(nodeJS) {
+    delete define;
+    return tmpDefine.apply(null, Array.prototype.slice.call(arguments, 0));
+  }
+  define = tmpDefine;
+  return define.apply(null, Array.prototype.slice.call(arguments, 0));
+};
+define([
+  'require',
+  'module',
+  './asn1',
+  './hmac',
+  './oids',
+  './pkcs7asn1',
+  './pbe',
+  './random',
+  './rsa',
+  './sha1',
+  './util',
+  './x509'
+], function() {
+  defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
+});
 })();

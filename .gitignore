@@ -1,6 +1,7 @@
 *.py[co]
 *.sw[nop]
 *~
+.bower.json
 .cdtproject
 .classpath
 .cproject
@@ -16,3 +17,4 @@ config.status
 configure
 dist
 tests/forge
+node_modules

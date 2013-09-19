@@ -38,14 +38,9 @@ else {
 }
 
 // define isArray
-if(Array.isArray) {
-  util.isArray = Array.isArray;
-}
-else {
-  util.isArray = function(x) {
-    return x && x.constructor === Array;
-  };
-}
+util.isArray = Array.isArray || function(x) {
+  return Object.prototype.toString.call(x) === '[object Array]';
+};
 
 /**
  * Constructor for a byte buffer.
@@ -74,16 +69,19 @@ util.ByteBuffer.prototype.length = function() {
  * @return true if this buffer is empty, false if not.
  */
 util.ByteBuffer.prototype.isEmpty = function() {
-  return (this.data.length - this.read) === 0;
+  return this.length() <= 0;
 };
 
 /**
  * Puts a byte in this buffer.
  *
  * @param b the byte to put.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.putByte = function(b) {
   this.data += String.fromCharCode(b);
+  return this;
 };
 
 /**
@@ -91,6 +89,8 @@ util.ByteBuffer.prototype.putByte = function(b) {
  *
  * @param b the byte to put.
  * @param n the number of bytes of value b to put.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.fillWithByte = function(b, n) {
   b = String.fromCharCode(b);
@@ -105,53 +105,68 @@ util.ByteBuffer.prototype.fillWithByte = function(b, n) {
     }
   }
   this.data = d;
+  return this;
 };
 
 /**
  * Puts bytes in this buffer.
  *
  * @param bytes the bytes (as a UTF-8 encoded string) to put.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.putBytes = function(bytes) {
   this.data += bytes;
+  return this;
 };
 
 /**
  * Puts a UTF-16 encoded string into this buffer.
  *
  * @param str the string to put.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.putString = function(str) {
   this.data += util.encodeUtf8(str);
+  return this;
 };
 
 /**
  * Puts a 16-bit integer in this buffer in big-endian order.
  *
  * @param i the 16-bit integer.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.putInt16 = function(i) {
   this.data +=
     String.fromCharCode(i >> 8 & 0xFF) +
     String.fromCharCode(i & 0xFF);
+  return this;
 };
 
 /**
  * Puts a 24-bit integer in this buffer in big-endian order.
  *
  * @param i the 24-bit integer.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.putInt24 = function(i) {
   this.data +=
     String.fromCharCode(i >> 16 & 0xFF) +
     String.fromCharCode(i >> 8 & 0xFF) +
     String.fromCharCode(i & 0xFF);
+  return this;
 };
 
 /**
  * Puts a 32-bit integer in this buffer in big-endian order.
  *
  * @param i the 32-bit integer.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.putInt32 = function(i) {
   this.data +=
@@ -159,35 +174,44 @@ util.ByteBuffer.prototype.putInt32 = function(i) {
     String.fromCharCode(i >> 16 & 0xFF) +
     String.fromCharCode(i >> 8 & 0xFF) +
     String.fromCharCode(i & 0xFF);
+  return this;
 };
 
 /**
  * Puts a 16-bit integer in this buffer in little-endian order.
  *
  * @param i the 16-bit integer.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.putInt16Le = function(i) {
   this.data +=
     String.fromCharCode(i & 0xFF) +
     String.fromCharCode(i >> 8 & 0xFF);
+  return this;
 };
 
 /**
  * Puts a 24-bit integer in this buffer in little-endian order.
  *
  * @param i the 24-bit integer.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.putInt24Le = function(i) {
   this.data +=
     String.fromCharCode(i & 0xFF) +
     String.fromCharCode(i >> 8 & 0xFF) +
     String.fromCharCode(i >> 16 & 0xFF);
+  return this;
 };
 
 /**
  * Puts a 32-bit integer in this buffer in little-endian order.
  *
  * @param i the 32-bit integer.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.putInt32Le = function(i) {
   this.data +=
@@ -195,6 +219,7 @@ util.ByteBuffer.prototype.putInt32Le = function(i) {
     String.fromCharCode(i >> 8 & 0xFF) +
     String.fromCharCode(i >> 16 & 0xFF) +
     String.fromCharCode(i >> 24 & 0xFF);
+  return this;
 };
 
 /**
@@ -202,6 +227,8 @@ util.ByteBuffer.prototype.putInt32Le = function(i) {
  *
  * @param i the n-bit integer.
  * @param n the number of bits in the integer.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.putInt = function(i, n) {
   do {
@@ -209,15 +236,19 @@ util.ByteBuffer.prototype.putInt = function(i, n) {
     this.data += String.fromCharCode((i >> n) & 0xFF);
   }
   while(n > 0);
+  return this;
 };
 
 /**
  * Puts the given buffer into this buffer.
  *
  * @param buffer the buffer to put into this one.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.putBuffer = function(buffer) {
   this.data += buffer.getBytes();
+  return this;
 };
 
 /**
@@ -330,7 +361,7 @@ util.ByteBuffer.prototype.getInt32Le = function() {
 util.ByteBuffer.prototype.getInt = function(n) {
   var rval = 0;
   do {
-    rval = (rval << n) + this.data.charCodeAt(this.read++);
+    rval = (rval << 8) + this.data.charCodeAt(this.read++);
     n -= 8;
   }
   while(n > 0);
@@ -393,11 +424,14 @@ util.ByteBuffer.prototype.at = function(i) {
  *
  * @param i the byte index.
  * @param b the byte to put.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.setAt = function(i, b) {
   this.data = this.data.substr(0, this.read + i) +
     String.fromCharCode(b) +
     this.data.substr(this.read + i + 1);
+  return this;
 };
 
 /**
@@ -422,31 +456,40 @@ util.ByteBuffer.prototype.copy = function() {
 
 /**
  * Compacts this buffer.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.compact = function() {
   if(this.read > 0) {
     this.data = this.data.slice(this.read);
     this.read = 0;
   }
+  return this;
 };
 
 /**
  * Clears this buffer.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.clear = function() {
   this.data = '';
   this.read = 0;
+  return this;
 };
 
 /**
  * Shortens this buffer by triming bytes off of the end of this buffer.
  *
  * @param count the number of bytes to trim off.
+ *
+ * @return this buffer.
  */
 util.ByteBuffer.prototype.truncate = function(count) {
   var len = Math.max(0, this.length() - count);
   this.data = this.data.substr(this.read, len);
   this.read = 0;
+  return this;
 };
 
 /**
@@ -1162,7 +1205,8 @@ util.getQueryVariables = function(query) {
       if(!(key in rval)) {
         rval[key] = [];
       }
-      if(val !== null) {
+      // disallow overriding object prototype keys
+      if(!(key in Object.prototype) && val !== null) {
         rval[key].push(unescape(val));
       }
     }
@@ -1541,16 +1585,177 @@ util.formatSize = function(size) {
   return size;
 };
 
+/**
+ * Converts an IPv4 or IPv6 string representation into bytes (in network order).
+ *
+ * @param ip the IPv4 or IPv6 address to convert.
+ *
+ * @return the 4-byte IPv6 or 16-byte IPv6 address or null if the address can't
+ *         be parsed.
+ */
+util.bytesFromIP = function(ip) {
+  if(ip.indexOf('.') !== -1) {
+    return util.bytesFromIPv4(ip);
+  }
+  if(ip.indexOf(':') !== -1) {
+    return util.bytesFromIPv6(ip);
+  }
+  return null;
+};
+
+/**
+ * Converts an IPv4 string representation into bytes (in network order).
+ *
+ * @param ip the IPv4 address to convert.
+ *
+ * @return the 4-byte address or null if the address can't be parsed.
+ */
+util.bytesFromIPv4 = function(ip) {
+  ip = ip.split('.');
+  if(ip.length !== 4) {
+    return null;
+  }
+  var b = util.createBuffer();
+  for(var i = 0; i < ip.length; ++i) {
+    var num = parseInt(ip[i], 10);
+    if(isNaN(num)) {
+      return null;
+    }
+    b.putByte(num);
+  }
+  return b.getBytes();
+};
+
+/**
+ * Converts an IPv6 string representation into bytes (in network order).
+ *
+ * @param ip the IPv6 address to convert.
+ *
+ * @return the 16-byte address or null if the address can't be parsed.
+ */
+util.bytesFromIPv6 = function(ip) {
+  var blanks = 0;
+  ip = ip.split(':').filter(function(e) {
+    if(e.length === 0) ++blanks;
+    return true;
+  });
+  var zeros = (8 - ip.length + blanks) * 2;
+  var b = util.createBuffer();
+  for(var i = 0; i < 8; ++i) {
+    if(!ip[i] || ip[i].length === 0) {
+      b.fillWithByte(0, zeros);
+      zeros = 0;
+      continue;
+    }
+    var bytes = util.hexToBytes(ip[i]);
+    if(bytes.length < 2) {
+      b.putByte(0);
+    }
+    b.putBytes(bytes);
+  }
+  return b.getBytes();
+};
+
+/**
+ * Converts 4-bytes into an IPv4 string representation or 16-bytes into
+ * an IPv6 string representation. The bytes must be in network order.
+ *
+ * @param bytes the bytes to convert.
+ *
+ * @return the IPv4 or IPv6 string representation if 4 or 16 bytes,
+ *         respectively, are given, otherwise null.
+ */
+util.bytesToIP = function(bytes) {
+  if(bytes.length === 4) {
+    return util.bytesToIPv4(bytes);
+  }
+  if(bytes.length === 16) {
+    return util.bytesToIPv6(bytes);
+  }
+  return null;
+};
+
+/**
+ * Converts 4-bytes into an IPv4 string representation. The bytes must be
+ * in network order.
+ *
+ * @param bytes the bytes to convert.
+ *
+ * @return the IPv4 string representation or null for an invalid # of bytes.
+ */
+util.bytesToIPv4 = function(bytes) {
+  if(bytes.length !== 4) {
+    return null;
+  }
+  var ip = [];
+  for(var i = 0; i < bytes.length; ++i) {
+    ip.push(bytes.charCodeAt(i));
+  }
+  return ip.join('.');
+};
+
+/**
+ * Converts 16-bytes into an IPv16 string representation. The bytes must be
+ * in network order.
+ *
+ * @param bytes the bytes to convert.
+ *
+ * @return the IPv16 string representation or null for an invalid # of bytes.
+ */
+util.bytesToIPv6 = function(bytes) {
+  if(bytes.length !== 16) {
+    return null;
+  }
+  var ip = [];
+  var zeroGroups = [];
+  var zeroMaxGroup = 0;
+  for(var i = 0; i < bytes.length; i += 2) {
+    var hex = util.bytesToHex(bytes[i] + bytes[i + 1]);
+    // canonicalize zero representation
+    while(hex[0] === '0' && hex !== '0') {
+      hex = hex.substr(1);
+    }
+    if(hex === '0') {
+      var last = zeroGroups[zeroGroups.length - 1];
+      var idx = ip.length;
+      if(!last || idx !== last.end + 1) {
+        zeroGroups.push({start: idx, end: idx});
+      }
+      else {
+        last.end = idx;
+        if((last.end - last.start) >
+          (zeroGroups[zeroMaxGroup].end - zeroGroups[zeroMaxGroup].start)) {
+          zeroMaxGroup = zeroGroups.length - 1;
+        }
+      }
+    }
+    ip.push(hex);
+  }
+  if(zeroGroups.length > 0) {
+    var group = zeroGroups[zeroMaxGroup];
+    // only shorten group of length > 0
+    if(group.end - group.start > 0) {
+      ip.splice(group.start, group.end - group.start + 1, '');
+      if(group.start === 0) {
+        ip.unshift('');
+      }
+      if(group.end === 7) {
+        ip.push('');
+      }
+    }
+  }
+  return ip.join(':');
+};
+
 } // end module implementation
 
 /* ########## Begin module wrapper ########## */
 var name = 'util';
-var deps = [];
-var nodeDefine = null;
 if(typeof define !== 'function') {
   // NodeJS -> AMD
   if(typeof module === 'object' && module.exports) {
-    nodeDefine = function(ids, factory) {
+    var nodeJS = true;
+    define = function(ids, factory) {
       factory(require, module);
     };
   }
@@ -1559,11 +1764,11 @@ if(typeof define !== 'function') {
     if(typeof forge === 'undefined') {
       forge = {};
     }
-    initModule(forge);
+    return initModule(forge);
   }
 }
 // AMD
-var defineDeps = ['require', 'module'].concat(deps);
+var deps;
 var defineFunc = function(require, module) {
   module.exports = function(forge) {
     var mods = deps.map(function(dep) {
@@ -1582,14 +1787,17 @@ var defineFunc = function(require, module) {
     return forge[name];
   };
 };
-if (typeof nodeDefine === 'function') {
-  nodeDefine(defineDeps, defineFunc);
-}
-else if (typeof define === 'function') {
-  define([].concat(defineDeps), function() {
-    defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
-  });
-}
-
-
+var tmpDefine = define;
+define = function(ids, factory) {
+  deps = (typeof ids === 'string') ? factory.slice(2) : ids.slice(2);
+  if(nodeJS) {
+    delete define;
+    return tmpDefine.apply(null, Array.prototype.slice.call(arguments, 0));
+  }
+  define = tmpDefine;
+  return define.apply(null, Array.prototype.slice.call(arguments, 0));
+};
+define(['require', 'module'], function() {
+  defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
+});
 })();

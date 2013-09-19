@@ -1,16 +1,72 @@
 /**
- * Javascript implementation of a basic RSA algorithms.
+ * Javascript implementation of basic RSA algorithms.
  *
  * @author Dave Longley
  *
  * Copyright (c) 2010-2013 Digital Bazaar, Inc.
+ *
+ * The only algorithm currently supported for PKI is RSA.
+ *
+ * An RSA key is often stored in ASN.1 DER format. The SubjectPublicKeyInfo
+ * ASN.1 structure is composed of an algorithm of type AlgorithmIdentifier
+ * and a subjectPublicKey of type bit string.
+ *
+ * The AlgorithmIdentifier contains an Object Identifier (OID) and parameters
+ * for the algorithm, if any. In the case of RSA, there aren't any.
+ *
+ * SubjectPublicKeyInfo ::= SEQUENCE {
+ *   algorithm AlgorithmIdentifier,
+ *   subjectPublicKey BIT STRING
+ * }
+ *
+ * AlgorithmIdentifer ::= SEQUENCE {
+ *   algorithm OBJECT IDENTIFIER,
+ *   parameters ANY DEFINED BY algorithm OPTIONAL
+ * }
+ *
+ * For an RSA public key, the subjectPublicKey is:
+ *
+ * RSAPublicKey ::= SEQUENCE {
+ *   modulus            INTEGER,    -- n
+ *   publicExponent     INTEGER     -- e
+ * }
+ *
+ * PrivateKeyInfo ::= SEQUENCE {
+ *   version                   Version,
+ *   privateKeyAlgorithm       PrivateKeyAlgorithmIdentifier,
+ *   privateKey                PrivateKey,
+ *   attributes           [0]  IMPLICIT Attributes OPTIONAL
+ * }
+ *
+ * Version ::= INTEGER
+ * PrivateKeyAlgorithmIdentifier ::= AlgorithmIdentifier
+ * PrivateKey ::= OCTET STRING
+ * Attributes ::= SET OF Attribute
+ *
+ * An RSA private key as the following structure:
+ *
+ * RSAPrivateKey ::= SEQUENCE {
+ *   version Version,
+ *   modulus INTEGER, -- n
+ *   publicExponent INTEGER, -- e
+ *   privateExponent INTEGER, -- d
+ *   prime1 INTEGER, -- p
+ *   prime2 INTEGER, -- q
+ *   exponent1 INTEGER, -- d mod (p-1)
+ *   exponent2 INTEGER, -- d mod (q-1)
+ *   coefficient INTEGER -- (inverse of q) mod p
+ * }
+ *
+ * Version ::= INTEGER
+ *
+ * The OID for the RSA key algorithm is: 1.2.840.113549.1.1.1
  */
 (function() {
 function initModule(forge) {
 /* ########## Begin module implementation ########## */
 
 if(typeof BigInteger === 'undefined') {
-  BigInteger = forge.jsbn.BigInteger;
+  var BigInteger = forge.jsbn.BigInteger;
 }
 
 // shortcut for asn.1 API
@@ -25,6 +81,178 @@ var pki = forge.pki;
 
 // for finding primes, which are 30k+i for i = 1, 7, 11, 13, 17, 19, 23, 29
 var GCD_30_DELTA = [6, 4, 2, 4, 2, 4, 6, 2];
+
+// validator for a PrivateKeyInfo structure
+var privateKeyValidator = {
+  // PrivateKeyInfo
+  name: 'PrivateKeyInfo',
+  tagClass: asn1.Class.UNIVERSAL,
+  type: asn1.Type.SEQUENCE,
+  constructed: true,
+  value: [{
+    // Version (INTEGER)
+    name: 'PrivateKeyInfo.version',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.INTEGER,
+    constructed: false,
+    capture: 'privateKeyVersion'
+  }, {
+    // privateKeyAlgorithm
+    name: 'PrivateKeyInfo.privateKeyAlgorithm',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.SEQUENCE,
+    constructed: true,
+    value: [{
+      name: 'AlgorithmIdentifier.algorithm',
+      tagClass: asn1.Class.UNIVERSAL,
+      type: asn1.Type.OID,
+      constructed: false,
+      capture: 'privateKeyOid'
+    }]
+  }, {
+    // PrivateKey
+    name: 'PrivateKeyInfo',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.OCTETSTRING,
+    constructed: false,
+    capture: 'privateKey'
+  }]
+};
+
+// validator for an RSA private key
+var rsaPrivateKeyValidator = {
+  // RSAPrivateKey
+  name: 'RSAPrivateKey',
+  tagClass: asn1.Class.UNIVERSAL,
+  type: asn1.Type.SEQUENCE,
+  constructed: true,
+  value: [{
+    // Version (INTEGER)
+    name: 'RSAPrivateKey.version',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.INTEGER,
+    constructed: false,
+    capture: 'privateKeyVersion'
+  }, {
+    // modulus (n)
+    name: 'RSAPrivateKey.modulus',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.INTEGER,
+    constructed: false,
+    capture: 'privateKeyModulus'
+  }, {
+    // publicExponent (e)
+    name: 'RSAPrivateKey.publicExponent',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.INTEGER,
+    constructed: false,
+    capture: 'privateKeyPublicExponent'
+  }, {
+    // privateExponent (d)
+    name: 'RSAPrivateKey.privateExponent',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.INTEGER,
+    constructed: false,
+    capture: 'privateKeyPrivateExponent'
+  }, {
+    // prime1 (p)
+    name: 'RSAPrivateKey.prime1',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.INTEGER,
+    constructed: false,
+    capture: 'privateKeyPrime1'
+  }, {
+    // prime2 (q)
+    name: 'RSAPrivateKey.prime2',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.INTEGER,
+    constructed: false,
+    capture: 'privateKeyPrime2'
+  }, {
+    // exponent1 (d mod (p-1))
+    name: 'RSAPrivateKey.exponent1',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.INTEGER,
+    constructed: false,
+    capture: 'privateKeyExponent1'
+  }, {
+    // exponent2 (d mod (q-1))
+    name: 'RSAPrivateKey.exponent2',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.INTEGER,
+    constructed: false,
+    capture: 'privateKeyExponent2'
+  }, {
+    // coefficient ((inverse of q) mod p)
+    name: 'RSAPrivateKey.coefficient',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.INTEGER,
+    constructed: false,
+    capture: 'privateKeyCoefficient'
+  }]
+};
+
+// validator for an RSA public key
+var rsaPublicKeyValidator = {
+  // RSAPublicKey
+  name: 'RSAPublicKey',
+  tagClass: asn1.Class.UNIVERSAL,
+  type: asn1.Type.SEQUENCE,
+  constructed: true,
+  value: [{
+    // modulus (n)
+    name: 'RSAPublicKey.modulus',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.INTEGER,
+    constructed: false,
+    capture: 'publicKeyModulus'
+  }, {
+    // publicExponent (e)
+    name: 'RSAPublicKey.exponent',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.INTEGER,
+    constructed: false,
+    capture: 'publicKeyExponent'
+  }]
+};
+
+// validator for an SubjectPublicKeyInfo structure
+// Note: Currently only works with an RSA public key
+var publicKeyValidator = forge.pki.rsa.publicKeyValidator = {
+  name: 'SubjectPublicKeyInfo',
+  tagClass: asn1.Class.UNIVERSAL,
+  type: asn1.Type.SEQUENCE,
+  constructed: true,
+  captureAsn1: 'subjectPublicKeyInfo',
+  value: [{
+    name: 'SubjectPublicKeyInfo.AlgorithmIdentifier',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.SEQUENCE,
+    constructed: true,
+    value: [{
+      name: 'AlgorithmIdentifier.algorithm',
+      tagClass: asn1.Class.UNIVERSAL,
+      type: asn1.Type.OID,
+      constructed: false,
+      capture: 'publicKeyOid'
+    }]
+  }, {
+    // subjectPublicKey
+    name: 'SubjectPublicKeyInfo.subjectPublicKey',
+    tagClass: asn1.Class.UNIVERSAL,
+    type: asn1.Type.BITSTRING,
+    constructed: false,
+    value: [{
+      // RSAPublicKey
+      name: 'SubjectPublicKeyInfo.subjectPublicKey.RSAPublicKey',
+      tagClass: asn1.Class.UNIVERSAL,
+      type: asn1.Type.SEQUENCE,
+      constructed: true,
+      optional: true,
+      captureAsn1: 'rsaPublicKey'
+    }]
+  }]
+};
 
 /**
  * Wrap digest in DigestInfo object.
@@ -46,8 +274,8 @@ var GCD_30_DELTA = [6, 4, 2, 4, 2, 4, 6, 2];
 var emsaPkcs1v15encode = function(md) {
   // get the oid for the algorithm
   var oid;
-  if(md.algorithm in forge.pki.oids) {
-    oid = forge.pki.oids[md.algorithm];
+  if(md.algorithm in pki.oids) {
+    oid = pki.oids[md.algorithm];
   }
   else {
     throw {
@@ -90,6 +318,10 @@ var _modPow = function(x, key, pub) {
 
   if(pub) {
     y = x.modPow(key.e, key.n);
+  }
+  else if(!key.p || !key.q) {
+    // allow calculation without CRT params (slow)
+    y = x.modPow(key.d, key.n);
   }
   else {
     // pre-compute dP, dQ, and qInv if necessary
@@ -289,7 +521,7 @@ pki.rsa.decrypt = function(ed, key, pub, ml) {
   var k = Math.ceil(key.n.bitLength() / 8);
 
   // error if the length of the encrypted data ED is not k
-  if(ed.length != k) {
+  if(ed.length !== k) {
     throw {
       message: 'Encrypted message length is invalid.',
       length: ed.length,
@@ -300,6 +532,14 @@ pki.rsa.decrypt = function(ed, key, pub, ml) {
   // convert encrypted data into a big integer
   // FIXME: hex conversion inefficient, get BigInteger w/byte strings
   var y = new BigInteger(forge.util.createBuffer(ed).toHex(), 16);
+
+  // y must be less than the modulus or it wasn't the result of
+  // a previous mod operation (encryption) using that modulus
+  if(y.compareTo(key.n) >= 0) {
+    throw {
+      message: 'Encrypted message is invalid.'
+    };
+  }
 
   // do RSA decryption
   var x = _modPow(y, key, pub);
@@ -531,11 +771,11 @@ pki.rsa.stepKeyPairGenerationState = function(state, n) {
     else if(state.state === 5) {
       var d = state.e.modInverse(state.phi);
       state.keys = {
-        privateKey: forge.pki.rsa.setPrivateKey(
+        privateKey: pki.rsa.setPrivateKey(
           state.n, state.e, d, state.p, state.q,
           d.mod(state.p1), d.mod(state.q1),
           state.q.modInverse(state.p)),
-        publicKey: forge.pki.rsa.setPublicKey(state.n, state.e)
+        publicKey: pki.rsa.setPublicKey(state.n, state.e)
       };
     }
 
@@ -642,7 +882,7 @@ pki.rsa.generateKeyPair = function(bits, e, options, callback) {
  *
  * @return the public key.
  */
-pki.rsa.setPublicKey = function(n, e) {
+pki.setRsaPublicKey = pki.rsa.setPublicKey = function(n, e) {
   var key = {
     n: n,
     e: e
@@ -650,26 +890,27 @@ pki.rsa.setPublicKey = function(n, e) {
 
   /**
    * Encrypts the given data with this public key. Newer applications
-   * should use the 'RSA-OAEP' decryption scheme, 'RSAES-PKCS1-v1_5' is for
+   * should use the 'RSA-OAEP' decryption scheme, 'RSAES-PKCS1-V1_5' is for
    * legacy applications.
    *
    * @param data the byte string to encrypt.
    * @param scheme the encryption scheme to use:
-   *          'RSAES-PKCS1-v1_5' (default),
+   *          'RSAES-PKCS1-V1_5' (default),
    *          'RSA-OAEP',
    *          'RAW', 'NONE', or null to perform raw RSA encryption.
+   * @param schemeOptions any scheme-specific options.
    *
    * @return the encrypted byte string.
    */
-  key.encrypt = function(data, scheme) {
+  key.encrypt = function(data, scheme, schemeOptions) {
     if(typeof scheme === 'string') {
       scheme = scheme.toUpperCase();
     }
     else if(scheme === undefined) {
-      scheme = 'RSAES-PKCS1-v1_5';
+      scheme = 'RSAES-PKCS1-V1_5';
     }
 
-    if(scheme === 'RSAES-PKCS1-v1_5') {
+    if(scheme === 'RSAES-PKCS1-V1_5') {
       scheme = {
         encode: function(m, key, pub) {
           return _encodePkcs1_v1_5(m, key, 0x02).getBytes();
@@ -679,7 +920,7 @@ pki.rsa.setPublicKey = function(n, e) {
     else if(scheme === 'RSA-OAEP' || scheme === 'RSAES-OAEP') {
       scheme = {
         encode: function(m, key) {
-          return forge.pkcs1.encode_rsa_oaep(key, m);
+          return forge.pkcs1.encode_rsa_oaep(key, m, schemeOptions);
         }
       };
     }
@@ -701,10 +942,10 @@ pki.rsa.setPublicKey = function(n, e) {
    * Verifies the given signature against the given digest.
    *
    * PKCS#1 supports multiple (currently two) signature schemes:
-   * RSASSA-PKCS1-v1_5 and RSASSA-PSS.
+   * RSASSA-PKCS1-V1_5 and RSASSA-PSS.
    *
    * By default this implementation uses the "old scheme", i.e.
-   * RSASSA-PKCS1-v1_5, in which case once RSA-decrypted, the
+   * RSASSA-PKCS1-V1_5, in which case once RSA-decrypted, the
    * signature is an OCTET STRING that holds a DigestInfo.
    *
    * DigestInfo ::= SEQUENCE {
@@ -720,7 +961,7 @@ pki.rsa.setPublicKey = function(n, e) {
    * @param digest the message digest hash to compare against the signature.
    * @param signature the signature to verify.
    * @param scheme signature verification scheme to use:
-   *          'RSASSA-PKCS1-v1_5' or undefined for RSASSA PKCS#1 v1.5,
+   *          'RSASSA-PKCS1-V1_5' or undefined for RSASSA PKCS#1 v1.5,
    *          a Forge PSS object for RSASSA-PSS,
    *          'NONE' or null for none, DigestInfo will not be expected, but
    *            PKCS#1 v1.5 padding will still be used.
@@ -732,10 +973,10 @@ pki.rsa.setPublicKey = function(n, e) {
        scheme = scheme.toUpperCase();
      }
      else if(scheme === undefined) {
-       scheme = 'RSASSA-PKCS1-v1_5';
+       scheme = 'RSASSA-PKCS1-V1_5';
      }
 
-     if(scheme === 'RSASSA-PKCS1-v1_5') {
+     if(scheme === 'RSASSA-PKCS1-V1_5') {
        scheme = {
          verify: function(digest, d) {
            // remove padding
@@ -780,7 +1021,8 @@ pki.rsa.setPublicKey = function(n, e) {
  *
  * @return the private key.
  */
-pki.rsa.setPrivateKey = function(n, e, d, p, q, dP, dQ, qInv) {
+pki.setRsaPrivateKey = pki.rsa.setPrivateKey = function(
+  n, e, d, p, q, dP, dQ, qInv) {
   var key = {
     n: n,
     e: e,
@@ -798,30 +1040,31 @@ pki.rsa.setPrivateKey = function(n, e, d, p, q, dP, dQ, qInv) {
    *
    * @param data the byte string to decrypt.
    * @param scheme the decryption scheme to use:
-   *          'RSAES-PKCS1-v1_5' (default),
+   *          'RSAES-PKCS1-V1_5' (default),
    *          'RSA-OAEP',
    *          'RAW', 'NONE', or null to perform raw RSA decryption.
+   * @param schemeOptions any scheme-specific options.
    *
    * @return the decrypted byte string.
    */
-  key.decrypt = function(data, scheme) {
+  key.decrypt = function(data, scheme, schemeOptions) {
     if(typeof scheme === 'string') {
       scheme = scheme.toUpperCase();
     }
     else if(scheme === undefined) {
-      scheme = 'RSAES-PKCS1-v1_5';
+      scheme = 'RSAES-PKCS1-V1_5';
     }
 
     // do rsa decryption w/o any decoding
     var d = pki.rsa.decrypt(data, key, false, false);
 
-    if(scheme === 'RSAES-PKCS1-v1_5') {
+    if(scheme === 'RSAES-PKCS1-V1_5') {
       scheme = { decode: _decodePkcs1_v1_5 };
     }
     else if(scheme === 'RSA-OAEP' || scheme === 'RSAES-OAEP') {
       scheme = {
         decode: function(d, key) {
-          return forge.pkcs1.decode_rsa_oaep(key, d);
+          return forge.pkcs1.decode_rsa_oaep(key, d, schemeOptions);
         }
       };
     }
@@ -842,15 +1085,15 @@ pki.rsa.setPrivateKey = function(n, e, d, p, q, dP, dQ, qInv) {
    * Signs the given digest, producing a signature.
    *
    * PKCS#1 supports multiple (currently two) signature schemes:
-   * RSASSA-PKCS1-v1_5 and RSASSA-PSS.
+   * RSASSA-PKCS1-V1_5 and RSASSA-PSS.
    *
    * By default this implementation uses the "old scheme", i.e.
-   * RSASSA-PKCS1-v1_5. In order to generate a PSS signature, provide
+   * RSASSA-PKCS1-V1_5. In order to generate a PSS signature, provide
    * an instance of Forge PSS object as the scheme parameter.
    *
    * @param md the message digest object with the hash to sign.
    * @param scheme the signature scheme to use:
-   *          'RSASSA-PKCS1-v1_5' or undefined for RSASSA PKCS#1 v1.5,
+   *          'RSASSA-PKCS1-V1_5' or undefined for RSASSA PKCS#1 v1.5,
    *          a Forge PSS object for RSASSA-PSS,
    *          'NONE' or null for none, DigestInfo will not be used but
    *            PKCS#1 v1.5 padding will still be used.
@@ -870,7 +1113,7 @@ pki.rsa.setPrivateKey = function(n, e, d, p, q, dP, dQ, qInv) {
       scheme = scheme.toUpperCase();
     }
 
-    if(scheme === undefined || scheme === 'RSASSA-PKCS1-v1_5') {
+    if(scheme === undefined || scheme === 'RSASSA-PKCS1-V1_5') {
       scheme = { encode: emsaPkcs1v15encode };
       bt = 0x01;
     }
@@ -885,6 +1128,236 @@ pki.rsa.setPrivateKey = function(n, e, d, p, q, dP, dQ, qInv) {
   };
 
   return key;
+};
+
+
+/**
+ * Wraps an RSAPrivateKey ASN.1 object in an ASN.1 PrivateKeyInfo object.
+ *
+ * @param rsaKey the ASN.1 RSAPrivateKey.
+ *
+ * @return the ASN.1 PrivateKeyInfo.
+ */
+pki.wrapRsaPrivateKey = function(rsaKey) {
+  // PrivateKeyInfo
+  return asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+    // version (0)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false, '\x00'),
+    // privateKeyAlgorithm
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+      asn1.create(
+        asn1.Class.UNIVERSAL, asn1.Type.OID, false,
+        asn1.oidToDer(pki.oids.rsaEncryption).getBytes()),
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.NULL, false, '')
+    ]),
+    // PrivateKey
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OCTETSTRING, false,
+      asn1.toDer(rsaKey).getBytes())
+    ]);
+};
+
+/**
+ * Wraps an RSAPrivateKey ASN.1 object in an ASN.1 PrivateKeyInfo object.
+ *
+ * @param rsaKey the ASN.1 RSAPrivateKey.
+ *
+ * @return the ASN.1 PrivateKeyInfo.
+ */
+pki.wrapRsaPrivateKey = function(rsaKey) {
+  // PrivateKeyInfo
+  return asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+    // version (0)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false, '\x00'),
+    // privateKeyAlgorithm
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+      asn1.create(
+        asn1.Class.UNIVERSAL, asn1.Type.OID, false,
+        asn1.oidToDer(pki.oids.rsaEncryption).getBytes()),
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.NULL, false, '')
+    ]),
+    // PrivateKey
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OCTETSTRING, false,
+      asn1.toDer(rsaKey).getBytes())
+    ]);
+};
+
+/**
+ * Converts a private key from an ASN.1 object.
+ *
+ * @param obj the ASN.1 representation of a PrivateKeyInfo containing an
+ *          RSAPrivateKey or an RSAPrivateKey.
+ *
+ * @return the private key.
+ */
+pki.privateKeyFromAsn1 = function(obj) {
+  // get PrivateKeyInfo
+  var capture = {};
+  var errors = [];
+  if(asn1.validate(obj, privateKeyValidator, capture, errors)) {
+    obj = asn1.fromDer(forge.util.createBuffer(capture.privateKey));
+  }
+
+  // get RSAPrivateKey
+  capture = {};
+  errors = [];
+  if(!asn1.validate(obj, rsaPrivateKeyValidator, capture, errors)) {
+    throw {
+      message: 'Cannot read private key. ' +
+        'ASN.1 object does not contain an RSAPrivateKey.',
+      errors: errors
+    };
+  }
+
+  // Note: Version is currently ignored.
+  // capture.privateKeyVersion
+  // FIXME: inefficient, get a BigInteger that uses byte strings
+  var n, e, d, p, q, dP, dQ, qInv;
+  n = forge.util.createBuffer(capture.privateKeyModulus).toHex();
+  e = forge.util.createBuffer(capture.privateKeyPublicExponent).toHex();
+  d = forge.util.createBuffer(capture.privateKeyPrivateExponent).toHex();
+  p = forge.util.createBuffer(capture.privateKeyPrime1).toHex();
+  q = forge.util.createBuffer(capture.privateKeyPrime2).toHex();
+  dP = forge.util.createBuffer(capture.privateKeyExponent1).toHex();
+  dQ = forge.util.createBuffer(capture.privateKeyExponent2).toHex();
+  qInv = forge.util.createBuffer(capture.privateKeyCoefficient).toHex();
+
+  // set private key
+  return pki.setRsaPrivateKey(
+    new BigInteger(n, 16),
+    new BigInteger(e, 16),
+    new BigInteger(d, 16),
+    new BigInteger(p, 16),
+    new BigInteger(q, 16),
+    new BigInteger(dP, 16),
+    new BigInteger(dQ, 16),
+    new BigInteger(qInv, 16));
+};
+
+/**
+ * Converts a private key to an ASN.1 RSAPrivateKey.
+ *
+ * @param key the private key.
+ *
+ * @return the ASN.1 representation of an RSAPrivateKey.
+ */
+pki.privateKeyToAsn1 = pki.privateKeyToRSAPrivateKey = function(key) {
+  // RSAPrivateKey
+  return asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+    // version (0 = only 2 primes, 1 multiple primes)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false,
+      String.fromCharCode(0x00)),
+    // modulus (n)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false,
+      _bnToBytes(key.n)),
+    // publicExponent (e)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false,
+      _bnToBytes(key.e)),
+    // privateExponent (d)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false,
+      _bnToBytes(key.d)),
+    // privateKeyPrime1 (p)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false,
+      _bnToBytes(key.p)),
+    // privateKeyPrime2 (q)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false,
+      _bnToBytes(key.q)),
+    // privateKeyExponent1 (dP)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false,
+      _bnToBytes(key.dP)),
+    // privateKeyExponent2 (dQ)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false,
+      _bnToBytes(key.dQ)),
+    // coefficient (qInv)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false,
+      _bnToBytes(key.qInv))
+  ]);
+};
+
+/**
+ * Converts a public key from an ASN.1 SubjectPublicKeyInfo or RSAPublicKey.
+ *
+ * @param obj the asn1 representation of a SubjectPublicKeyInfo or RSAPublicKey.
+ *
+ * @return the public key.
+ */
+pki.publicKeyFromAsn1 = function(obj) {
+  // get SubjectPublicKeyInfo
+  var capture = {};
+  var errors = [];
+  if(asn1.validate(obj, publicKeyValidator, capture, errors)) {
+    // get oid
+    var oid = asn1.derToOid(capture.publicKeyOid);
+    if(oid !== pki.oids.rsaEncryption) {
+      throw {
+        message: 'Cannot read public key. Unknown OID.',
+        oid: oid
+      };
+    }
+    obj = capture.rsaPublicKey;
+  }
+
+  // get RSA params
+  errors = [];
+  if(!asn1.validate(obj, rsaPublicKeyValidator, capture, errors)) {
+    throw {
+      message: 'Cannot read public key. ' +
+        'ASN.1 object does not contain an RSAPublicKey.',
+      errors: errors
+    };
+  }
+
+  // FIXME: inefficient, get a BigInteger that uses byte strings
+  var n = forge.util.createBuffer(capture.publicKeyModulus).toHex();
+  var e = forge.util.createBuffer(capture.publicKeyExponent).toHex();
+
+  // set public key
+  return pki.setRsaPublicKey(
+    new BigInteger(n, 16),
+    new BigInteger(e, 16));
+};
+
+/**
+ * Converts a public key to an ASN.1 SubjectPublicKeyInfo.
+ *
+ * @param key the public key.
+ *
+ * @return the asn1 representation of a SubjectPublicKeyInfo.
+ */
+pki.publicKeyToAsn1 = pki.publicKeyToSubjectPublicKeyInfo = function(key) {
+  // SubjectPublicKeyInfo
+  return asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+    // AlgorithmIdentifier
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+      // algorithm
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false,
+        asn1.oidToDer(pki.oids.rsaEncryption).getBytes()),
+      // parameters (null)
+      asn1.create(asn1.Class.UNIVERSAL, asn1.Type.NULL, false, '')
+    ]),
+    // subjectPublicKey
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.BITSTRING, false, [
+      pki.publicKeyToRSAPublicKey(key)
+    ])
+  ]);
+};
+
+/**
+ * Converts a public key to an ASN.1 RSAPublicKey.
+ *
+ * @param key the public key.
+ *
+ * @return the asn1 representation of a RSAPublicKey.
+ */
+pki.publicKeyToRSAPublicKey = function(key) {
+  // RSAPublicKey
+  return asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, [
+    // modulus (n)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false,
+      _bnToBytes(key.n)),
+    // publicExponent (e)
+    asn1.create(asn1.Class.UNIVERSAL, asn1.Type.INTEGER, false,
+      _bnToBytes(key.e))
+  ]);
 };
 
 /**
@@ -944,9 +1417,20 @@ function _encodePkcs1_v1_5(m, key, bt) {
   }
   // public key op
   else {
-    for(var i = 0; i < padNum; ++i) {
-      padByte = Math.floor(Math.random() * 255) + 1;
-      eb.putByte(padByte);
+    // pad with random non-zero values
+    while(padNum > 0) {
+      var numZeros = 0;
+      var padBytes = forge.random.getBytes(padNum);
+      for(var i = 0; i < padNum; ++i) {
+        padByte = padBytes.charCodeAt(i);
+        if(padByte === 0) {
+          ++numZeros;
+        }
+        else {
+          eb.putByte(padByte);
+        }
+      }
+      padNum = numZeros;
     }
   }
 
@@ -1066,7 +1550,7 @@ function _generateKeyPair(state, options, callback) {
       // 10 ms gives 5ms of leeway for other calculations before dropping
       // below 60fps (1000/60 == 16.67), but in reality, the number will
       // likely be higher due to an 'atomic' big int modPow
-      if(forge.pki.rsa.stepKeyPairGenerationState(state, 10)) {
+      if(pki.rsa.stepKeyPairGenerationState(state, 10)) {
         return callback(null, state.keys);
       }
       forge.util.setImmediate(step);
@@ -1216,27 +1700,42 @@ function _generateKeyPair(state, options, callback) {
     // set keys
     var d = state.e.modInverse(state.phi);
     state.keys = {
-      privateKey: forge.pki.rsa.setPrivateKey(
+      privateKey: pki.rsa.setPrivateKey(
         state.n, state.e, d, state.p, state.q,
         d.mod(state.p1), d.mod(state.q1),
         state.q.modInverse(state.p)),
-      publicKey: forge.pki.rsa.setPublicKey(state.n, state.e)
+      publicKey: pki.rsa.setPublicKey(state.n, state.e)
     };
 
     callback(null, state.keys);
   }
 }
 
+/**
+ * Converts a positive BigInteger into 2's-complement big-endian bytes.
+ *
+ * @param b the big integer to convert.
+ *
+ * @return the bytes.
+ */
+function _bnToBytes(b) {
+  // prepend 0x00 if first byte >= 0x80
+  var hex = b.toString(16);
+  if(hex[0] >= '8') {
+    hex = '00' + hex;
+  }
+  return forge.util.hexToBytes(hex);
+}
+
 } // end module implementation
 
 /* ########## Begin module wrapper ########## */
 var name = 'rsa';
-var deps = ['./asn1', './oids', './random', './util', './jsbn', './pkcs1'];
-var nodeDefine = null;
 if(typeof define !== 'function') {
   // NodeJS -> AMD
   if(typeof module === 'object' && module.exports) {
-    nodeDefine = function(ids, factory) {
+    var nodeJS = true;
+    define = function(ids, factory) {
       factory(require, module);
     };
   }
@@ -1245,11 +1744,11 @@ if(typeof define !== 'function') {
     if(typeof forge === 'undefined') {
       forge = {};
     }
-    initModule(forge);
+    return initModule(forge);
   }
 }
 // AMD
-var defineDeps = ['require', 'module'].concat(deps);
+var deps;
 var defineFunc = function(require, module) {
   module.exports = function(forge) {
     var mods = deps.map(function(dep) {
@@ -1268,13 +1767,26 @@ var defineFunc = function(require, module) {
     return forge[name];
   };
 };
-if (typeof nodeDefine === 'function') {
-  nodeDefine(defineDeps, defineFunc);
-}
-else if (typeof define === 'function') {
-  define([].concat(defineDeps), function() {
-    defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
-  });
-}
-
+var tmpDefine = define;
+define = function(ids, factory) {
+  deps = (typeof ids === 'string') ? factory.slice(2) : ids.slice(2);
+  if(nodeJS) {
+    delete define;
+    return tmpDefine.apply(null, Array.prototype.slice.call(arguments, 0));
+  }
+  define = tmpDefine;
+  return define.apply(null, Array.prototype.slice.call(arguments, 0));
+};
+define([
+  'require',
+  'module',
+  './asn1',
+  './oids',
+  './random',
+  './util',
+  './jsbn',
+  './pkcs1'
+], function() {
+  defineFunc.apply(null, Array.prototype.slice.call(arguments, 0));
+});
 })();

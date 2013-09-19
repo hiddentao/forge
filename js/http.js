@@ -199,9 +199,8 @@ var _initSocket = function(client, socket, tlsOptions) {
       }
       else {
         var out = request.toString();
-        if(request.body)
-        {
-           out += request.body;
+        if(request.body) {
+          out += request.body;
         }
         request.time = +new Date();
         socket.send(out);
@@ -1200,12 +1199,15 @@ http.createResponse = function() {
   response.readBody = function(b) {
     var contentLength = response.getField('Content-Length');
     var transferEncoding = response.getField('Transfer-Encoding');
+    if(contentLength !== null) {
+      contentLength = parseInt(contentLength);
+    }
 
     // read specified length
     if(contentLength !== null && contentLength >= 0) {
       response.body = response.body || '';
       response.body += b.getBytes(contentLength);
-      response.bodyReceived = (response.body.length == contentLength);
+      response.bodyReceived = (response.body.length === contentLength);
     }
     // read chunked encoding
     else if(transferEncoding !== null) {
@@ -1375,7 +1377,7 @@ http.withinCookieDomain = function(url, cookie) {
   var rval = false;
 
   // cookie may be null, a cookie object, or a domain string
-  var domain = (cookie === null || cookie.constructor == String) ?
+  var domain = (cookie === null || typeof cookie === 'string') ?
     cookie : cookie.domain;
 
   // any domain will do
@@ -1385,7 +1387,7 @@ http.withinCookieDomain = function(url, cookie) {
   // ensure domain starts with a '.'
   else if(domain.charAt(0) === '.') {
     // parse URL as necessary
-    if(url.constructor == String) {
+    if(typeof url === 'string') {
       url = http.parseUrl(url);
     }
 
